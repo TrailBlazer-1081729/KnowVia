@@ -1,0 +1,64 @@
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# IDE and editor files
+.idea/
+.vscode/
+
+# Python version
+# Uncomment if you do not want to share this file
+# .python-version
+
+# Python build files
+build/
+dist/
+wheels/
+*.egg-info/
+
+# Testing and coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Logs
+*.log
+
+# Generated archives
+*.zip
+
+# Node.js (frontend)
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+
+# Frontend environment files
+frontend/.env
+frontend/.env.*
+
+# Generated uploads
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# Local databases
+*.db
+*.sqlite3
+
+# Generated PDF
+# Uncomment if you don't want to upload this PDF
+# sample_research_paper.pdf
+
+# Operating system files
+.DS_Store
+Thumbs.db
