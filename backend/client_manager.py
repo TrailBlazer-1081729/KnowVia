@@ -1,4 +1,3 @@
-
 import sys
 from pathlib import Path
 from contextlib import AsyncExitStack
@@ -33,7 +32,10 @@ class MCPClientManager:
                         f"MCP server file not found: {path}"
                     )
 
-                print(f"Connecting to MCP server: {name}", flush=True)
+                print(
+                    f"Connecting to MCP server: {name}",
+                    flush=True,
+                )
 
                 params = StdioServerParameters(
                     command=sys.executable,
@@ -51,9 +53,13 @@ class MCPClientManager:
                 )
 
                 await session.initialize()
+
                 self.sessions[name] = session
 
-                print(f"Connected to {name}", flush=True)
+                print(
+                    f"Connected to {name}",
+                    flush=True,
+                )
 
         except Exception:
             await self.close()
@@ -79,15 +85,24 @@ class MCPClientManager:
 
         return tools
 
-    async def call_tool(self, tool_name, arguments):
-        for server_name, session in self.sessions.items():
+    async def call_tool(self, tool_name: str, arguments: dict):
+        for session in self.sessions.values():
             result = await session.list_tools()
 
-            if any(t.name == tool_name for t in result.tools):
-                return await session.call_tool(tool_name, arguments)
+            if any(
+                tool.name == tool_name
+                for tool in result.tools
+            ):
+                return await session.call_tool(
+                    tool_name,
+                    arguments,
+                )
 
-        raise ValueError(f"Tool not found: {tool_name}")
+        raise ValueError(
+            f"Tool not found: {tool_name}"
+        )
 
     async def close(self):
         await self.exit_stack.aclose()
         self.sessions.clear()
+        self.exit_stack = AsyncExitStack()
