@@ -54,19 +54,19 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({
   );
 
   return (
-    <aside className="w-80 lg:w-96 border-l border-[#e6dfd8] dark:border-[#2d2a25] bg-[#faf9f5] dark:bg-[#121211] flex flex-col h-full overflow-hidden shrink-0 z-30 transition-all">
+    <aside className="w-80 lg:w-96 border-l border-[#e7e5e4] dark:border-[#27272a] bg-[#f5f5f5] dark:bg-[#0c0a09] flex flex-col h-full overflow-hidden shrink-0 z-30 transition-all">
       {/* Panel Header */}
-      <div className="p-4 border-b border-[#e6dfd8] dark:border-[#2d2a25] flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Database className="w-4 h-4 text-[#cc785c]" />
-          <h3 className="font-serif-display text-base font-medium text-[#141413] dark:text-[#faf9f5]">
+      <div className="p-4 border-b border-[#e7e5e4] dark:border-[#27272a] flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <Database className="w-4 h-4 text-[#0c0a09] dark:text-[#f5f5f5]" />
+          <h3 className="font-display-light text-xl text-[#0c0a09] dark:text-[#f5f5f5]">
             Document Intelligence
           </h3>
         </div>
 
         <button
           onClick={onClose}
-          className="p-1 rounded-md text-[#6c6a64] dark:text-[#9e998f] hover:text-[#141413] dark:hover:text-[#faf9f5] hover:bg-[#efe9de] dark:hover:bg-[#22201d] transition-colors"
+          className="p-1.5 rounded-full text-[#777169] dark:text-[#a8a29e] hover:text-[#0c0a09] dark:hover:text-[#f5f5f5] hover:bg-[#f0efed] dark:hover:bg-[#1c1917] transition-colors"
           title="Close Context Panel"
           aria-label="Close Context Panel"
         >
@@ -79,40 +79,40 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({
         {/* SECTION 1: Document Details */}
         {document ? (
           <div>
-            <div className="text-[11px] font-semibold text-[#6c6a64] dark:text-[#9e998f] uppercase tracking-wider mb-2">
+            <div className="text-[11px] font-semibold font-sans-editorial text-[#777169] dark:text-[#a8a29e] uppercase tracking-wider mb-2">
               Ingested Document
             </div>
 
-            <div className="p-3.5 rounded-xl bg-[#efe9de] dark:bg-[#1c1b18] border border-[#e6dfd8] dark:border-[#2d2a25] space-y-2.5">
+            <div className="p-4 rounded-2xl bg-white dark:bg-[#1c1917] border border-[#e7e5e4] dark:border-[#27272a] space-y-3 shadow-xs">
               <div className="flex items-start gap-2.5">
-                <FileText className="w-4 h-4 text-[#cc785c] shrink-0 mt-0.5" />
-                <span className="text-xs font-semibold text-[#141413] dark:text-[#faf9f5] break-words">
+                <FileText className="w-4 h-4 text-[#0c0a09] dark:text-[#f5f5f5] shrink-0 mt-0.5" />
+                <span className="text-xs font-medium font-sans-editorial text-[#0c0a09] dark:text-[#f5f5f5] break-words">
                   {document.filename}
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[#e6dfd8] dark:border-[#2d2a25] text-[11px]">
+              <div className="grid grid-cols-2 gap-2 pt-2.5 border-t border-[#e7e5e4] dark:border-[#27272a] text-[11px] font-sans-editorial">
                 <div>
-                  <span className="text-[#8e8b82] dark:text-[#7a766e] block">Size</span>
-                  <span className="font-medium text-[#141413] dark:text-[#faf9f5]">
+                  <span className="text-[#a8a29e] block">Size</span>
+                  <span className="font-medium text-[#0c0a09] dark:text-[#f5f5f5]">
                     {formatBytes(document.size_bytes)}
                   </span>
                 </div>
                 <div>
-                  <span className="text-[#8e8b82] dark:text-[#7a766e] block">Pages</span>
-                  <span className="font-medium text-[#141413] dark:text-[#faf9f5]">
+                  <span className="text-[#a8a29e] block">Pages</span>
+                  <span className="font-medium text-[#0c0a09] dark:text-[#f5f5f5]">
                     {document.page_count}
                   </span>
                 </div>
                 <div>
-                  <span className="text-[#8e8b82] dark:text-[#7a766e] block">Indexed Chunks</span>
-                  <span className="font-medium text-[#141413] dark:text-[#faf9f5]">
+                  <span className="text-[#a8a29e] block">Indexed Chunks</span>
+                  <span className="font-medium text-[#0c0a09] dark:text-[#f5f5f5]">
                     {document.chunk_count || document.page_count * 4}
                   </span>
                 </div>
                 <div>
-                  <span className="text-[#8e8b82] dark:text-[#7a766e] block">Status</span>
-                  <span className="inline-flex items-center gap-1 font-medium text-[#5db872]">
+                  <span className="text-[#a8a29e] block">Status</span>
+                  <span className="inline-flex items-center gap-1 font-medium text-[#16a34a] dark:text-[#22c55e]">
                     <CheckCircle2 className="w-3 h-3" />
                     <span>{document.status}</span>
                   </span>
@@ -121,7 +121,7 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({
             </div>
           </div>
         ) : (
-          <div className="p-6 text-center text-xs text-[#8e8b82] dark:text-[#7a766e] border border-dashed border-[#e6dfd8] dark:border-[#2d2a25] rounded-xl">
+          <div className="p-6 text-center text-xs text-[#a8a29e] border border-dashed border-[#e7e5e4] dark:border-[#27272a] rounded-2xl">
             No document ingested yet.
           </div>
         )}
@@ -129,33 +129,33 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({
         {/* SECTION 2: Retrieved Grounded Citations */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-semibold text-[#6c6a64] dark:text-[#9e998f] uppercase tracking-wider">
+            <span className="text-[11px] font-semibold font-sans-editorial text-[#777169] dark:text-[#a8a29e] uppercase tracking-wider">
               Grounded Sources ({sources.length})
             </span>
             {sources.length > 0 && (
-              <span className="text-[10px] text-[#cc785c] font-medium">Active Turn</span>
+              <span className="text-[10px] text-[#0c0a09] dark:text-white font-medium font-sans-editorial">Active Turn</span>
             )}
           </div>
 
           {sources.length > 2 && (
             <div className="relative mb-3">
-              <Search className="w-3.5 h-3.5 text-[#8e8b82] absolute left-2.5 top-2.5" />
+              <Search className="w-3.5 h-3.5 text-[#a8a29e] absolute left-3 top-2.5" />
               <input
                 type="text"
                 value={searchFilter}
                 onChange={(e) => setSearchFilter(e.target.value)}
                 placeholder="Filter source passages..."
-                className="w-full text-xs pl-8 pr-3 py-1.5 rounded-lg border border-[#e6dfd8] dark:border-[#2d2a25] bg-[#efe9de]/50 dark:bg-[#1c1b18] text-[#141413] dark:text-[#faf9f5] focus:outline-none focus:border-[#cc785c]"
+                className="w-full text-xs pl-8 pr-3 py-1.5 rounded-full border border-[#d6d3d1] dark:border-[#3f3f46] bg-white dark:bg-[#1c1917] text-[#0c0a09] dark:text-[#f5f5f5] focus:outline-none focus:border-[#0c0a09]"
               />
             </div>
           )}
 
           {sources.length === 0 ? (
-            <div className="p-5 text-center text-xs text-[#8e8b82] dark:text-[#7a766e] bg-[#efe9de]/40 dark:bg-[#1c1b18]/40 border border-[#e6dfd8] dark:border-[#2d2a25] rounded-xl">
-              <BookOpen className="w-5 h-5 mx-auto mb-2 text-[#8e8b82] opacity-60" />
+            <div className="p-6 text-center text-xs text-[#a8a29e] bg-white dark:bg-[#1c1917] border border-[#e7e5e4] dark:border-[#27272a] rounded-2xl shadow-xs">
+              <BookOpen className="w-5 h-5 mx-auto mb-2 text-[#a8a29e] opacity-50" />
               <p>No citations active.</p>
-              <p className="text-[11px] mt-1 text-[#8e8b82]">
-                Ask a question in Text or Voice mode to retrieve cited excerpts.
+              <p className="text-[11px] mt-1 text-[#a8a29e]">
+                Inquire in Text or Voice mode to retrieve cited excerpts.
               </p>
             </div>
           ) : (
@@ -165,33 +165,33 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({
                 return (
                   <div
                     key={src.id}
-                    className={`p-3.5 rounded-xl border transition-all text-xs ${
+                    className={`p-4 rounded-2xl border transition-all text-xs bg-white dark:bg-[#1c1917] shadow-xs ${
                       isHighlighted
-                        ? 'border-[#cc785c] bg-[#efe9de] dark:bg-[#22201d] ring-2 ring-[#cc785c]/20'
-                        : 'border-[#e6dfd8] dark:border-[#2d2a25] bg-[#efe9de]/60 dark:bg-[#1c1b18] hover:border-[#cc785c]/40'
+                        ? 'border-[#0c0a09] dark:border-white ring-2 ring-[#0c0a09]/15'
+                        : 'border-[#e7e5e4] dark:border-[#27272a] hover:border-[#a8a29e]'
                     }`}
                   >
-                    <div className="flex items-center justify-between pb-2 mb-2 border-b border-[#e6dfd8] dark:border-[#2d2a25]">
+                    <div className="flex items-center justify-between pb-2 mb-2 border-b border-[#e7e5e4] dark:border-[#27272a]">
                       <div className="flex items-center gap-1.5">
-                        <span className="px-1.5 py-0.5 rounded bg-[#cc785c] text-white font-mono text-[10px] font-semibold">
+                        <span className="px-2 py-0.5 rounded-full bg-[#f0efed] dark:bg-[#292524] text-[#0c0a09] dark:text-white font-mono text-[10px] font-semibold">
                           Page {src.page}
                         </span>
-                        <span className="font-medium text-[#141413] dark:text-[#faf9f5] truncate max-w-[130px]">
+                        <span className="font-medium font-sans-editorial text-[#0c0a09] dark:text-[#f5f5f5] truncate max-w-[130px]">
                           {src.section || 'Excerpt'}
                         </span>
                       </div>
 
                       <div className="flex items-center gap-2">
-                        <span className="text-[10px] text-[#5db872] font-mono font-medium">
+                        <span className="text-[10px] text-[#16a34a] dark:text-[#22c55e] font-mono font-medium">
                           {Math.round(src.relevance_score * 100)}% match
                         </span>
                         <button
                           onClick={() => copySnippet(src.snippet, src.id)}
-                          className="p-1 rounded text-[#8e8b82] hover:text-[#141413] dark:hover:text-[#faf9f5] transition-colors"
+                          className="p-1 rounded-full text-[#a8a29e] hover:text-[#0c0a09] dark:hover:text-white transition-colors"
                           title="Copy cited snippet"
                         >
                           {copiedSnippetId === src.id ? (
-                            <Check className="w-3 h-3 text-[#5db872]" />
+                            <Check className="w-3 h-3 text-[#16a34a]" />
                           ) : (
                             <Copy className="w-3 h-3" />
                           )}
@@ -199,7 +199,7 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({
                       </div>
                     </div>
 
-                    <p className="text-[#3d3d3a] dark:text-[#cfcbc2] leading-relaxed text-[11px] font-serif-display italic">
+                    <p className="text-[#4e4e4e] dark:text-[#d6d3d1] leading-relaxed text-[11px] font-display-light italic">
                       "{src.snippet}"
                     </p>
                   </div>
@@ -211,27 +211,27 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({
 
         {/* SECTION 3: MCP Architecture & Index Stats */}
         <div>
-          <div className="text-[11px] font-semibold text-[#6c6a64] dark:text-[#9e998f] uppercase tracking-wider mb-2 flex items-center gap-1.5">
-            <Cpu className="w-3.5 h-3.5 text-[#5db8a6]" />
+          <div className="text-[11px] font-semibold font-sans-editorial text-[#777169] dark:text-[#a8a29e] uppercase tracking-wider mb-2 flex items-center gap-1.5">
+            <Cpu className="w-3.5 h-3.5 text-[#0c0a09] dark:text-[#f5f5f5]" />
             <span>Architecture & Tool Calling</span>
           </div>
 
-          <div className="p-3.5 rounded-xl bg-[#efe9de] dark:bg-[#1c1b18] border border-[#e6dfd8] dark:border-[#2d2a25] space-y-2 text-[11px]">
+          <div className="p-4 rounded-2xl bg-white dark:bg-[#1c1917] border border-[#e7e5e4] dark:border-[#27272a] space-y-2.5 text-[11px] font-sans-editorial shadow-xs">
             <div className="flex items-center justify-between">
-              <span className="text-[#8e8b82] dark:text-[#7a766e]">Ingestion MCP</span>
-              <span className="font-mono text-[#5db872]">Ready (Registered)</span>
+              <span className="text-[#a8a29e]">Ingestion MCP</span>
+              <span className="font-mono text-[#16a34a] dark:text-[#22c55e]">Ready (Registered)</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-[#8e8b82] dark:text-[#7a766e]">Query MCP</span>
-              <span className="font-mono text-[#5db872]">Ready (Registered)</span>
+              <span className="text-[#a8a29e]">Query MCP</span>
+              <span className="font-mono text-[#16a34a] dark:text-[#22c55e]">Ready (Registered)</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-[#8e8b82] dark:text-[#7a766e]">Embedding Vector</span>
-              <span className="font-mono text-[#141413] dark:text-[#faf9f5]">768-dim Dense</span>
+              <span className="text-[#a8a29e]">Embedding Vector</span>
+              <span className="font-mono text-[#0c0a09] dark:text-[#f5f5f5]">768-dim Dense</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-[#8e8b82] dark:text-[#7a766e]">Similarity Metric</span>
-              <span className="font-mono text-[#141413] dark:text-[#faf9f5]">Cosine Distance</span>
+              <span className="text-[#a8a29e]">Similarity Metric</span>
+              <span className="font-mono text-[#0c0a09] dark:text-[#f5f5f5]">Cosine Distance</span>
             </div>
           </div>
         </div>

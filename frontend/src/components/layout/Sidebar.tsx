@@ -46,16 +46,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   return (
     <aside
-      className={`fixed lg:static top-0 bottom-0 left-0 z-40 transition-all duration-300 ease-in-out border-r border-[#e6dfd8] dark:border-[#2d2a25] bg-[#faf9f5] dark:bg-[#121211] flex flex-col ${
+      className={`fixed lg:static top-0 bottom-0 left-0 z-40 transition-all duration-300 ease-in-out border-r border-[#e7e5e4] dark:border-[#27272a] bg-[#f5f5f5] dark:bg-[#0c0a09] flex flex-col ${
         isCollapsed ? '-translate-x-full lg:translate-x-0 lg:w-20' : 'w-72 translate-x-0'
       }`}
     >
       {/* Top Header */}
-      <div className="p-4 border-b border-[#e6dfd8] dark:border-[#2d2a25] flex items-center justify-between">
+      <div className="p-4 border-b border-[#e7e5e4] dark:border-[#27272a] flex items-center justify-between">
         <BrandLogo compact={isCollapsed} />
         <button
           onClick={onToggleCollapse}
-          className="p-1.5 rounded-md hover:bg-[#efe9de] dark:hover:bg-[#22201d] text-[#6c6a64] dark:text-[#9e998f] transition-colors"
+          className="p-1.5 rounded-full hover:bg-[#f0efed] dark:hover:bg-[#1c1917] text-[#777169] dark:text-[#a8a29e] transition-colors"
           title={isCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
           aria-label="Toggle Sidebar"
         >
@@ -67,11 +67,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </button>
       </div>
 
-      {/* New Session Action */}
+      {/* New Session Action: ElevenLabs Ink Pill */}
       <div className="p-3">
         <button
           onClick={onNewSession}
-          className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-[#cc785c] hover:bg-[#a9583e] text-white font-sans-body font-medium text-sm shadow-sm transition-all duration-150 active:scale-[0.98]"
+          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-full bg-[#292524] hover:bg-[#0c0a09] dark:bg-[#f5f5f5] dark:text-[#0c0a09] dark:hover:bg-white text-white font-sans-editorial font-medium text-sm shadow-xs transition-all active:scale-[0.98]"
         >
           <Plus className="w-4 h-4 shrink-0" />
           {!isCollapsed && <span>New Session</span>}
@@ -83,26 +83,28 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Active Document Section */}
         {currentDocument && !isCollapsed && (
           <div>
-            <div className="text-[11px] font-sans-body font-semibold uppercase tracking-wider text-[#6c6a64] dark:text-[#9e998f] px-2 mb-1.5">
+            <div className="text-[11px] font-sans-editorial font-semibold uppercase tracking-wider text-[#777169] dark:text-[#a8a29e] px-2 mb-1.5">
               Current Document
             </div>
-            <div className="p-2.5 rounded-lg bg-[#efe9de] dark:bg-[#1c1b18] border border-[#e6dfd8] dark:border-[#2d2a25] shadow-xs">
-              <div className="flex items-start gap-2">
-                <FileText className="w-4 h-4 text-[#cc785c] shrink-0 mt-0.5" />
+            <div className="p-3 rounded-xl bg-white dark:bg-[#1c1917] border border-[#e7e5e4] dark:border-[#27272a] shadow-xs">
+              <div className="flex items-start gap-2.5">
+                <div className="w-7 h-7 rounded-full bg-[#f0efed] dark:bg-[#292524] flex items-center justify-center text-[#292524] dark:text-[#f5f5f5] shrink-0 mt-0.5">
+                  <FileText className="w-3.5 h-3.5" />
+                </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs font-medium text-[#141413] dark:text-[#faf9f5] truncate">
+                  <p className="text-xs font-medium text-[#0c0a09] dark:text-[#f5f5f5] truncate">
                     {currentDocument.filename}
                   </p>
                   <div className="flex items-center gap-2 mt-1">
                     <span
-                      className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                      className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium ${
                         currentDocument.status === 'ready'
-                          ? 'bg-[#5db872]/15 text-[#5db872]'
+                          ? 'bg-[#16a34a]/10 text-[#16a34a] dark:text-[#22c55e]'
                           : currentDocument.status === 'ingesting'
-                          ? 'bg-[#e8a55a]/15 text-[#e8a55a]'
+                          ? 'bg-[#777169]/10 text-[#777169] dark:text-[#a8a29e]'
                           : currentDocument.status === 'error'
-                          ? 'bg-[#c64545]/15 text-[#c64545]'
-                          : 'bg-[#6c6a64]/15 text-[#6c6a64]'
+                          ? 'bg-[#dc2626]/10 text-[#dc2626]'
+                          : 'bg-[#f0efed] text-[#777169]'
                       }`}
                     >
                       {currentDocument.status === 'ready' && (
@@ -116,7 +118,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       )}
                       {currentDocument.status}
                     </span>
-                    <span className="text-[10px] text-[#6c6a64] dark:text-[#9e998f]">
+                    <span className="text-[10px] text-[#777169] dark:text-[#a8a29e]">
                       {currentDocument.page_count} {currentDocument.page_count === 1 ? 'page' : 'pages'}
                     </span>
                   </div>
@@ -129,7 +131,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Recent Research Documents */}
         <div>
           {!isCollapsed && (
-            <div className="text-[11px] font-sans-body font-semibold uppercase tracking-wider text-[#6c6a64] dark:text-[#9e998f] px-2 mb-1.5 flex items-center justify-between">
+            <div className="text-[11px] font-sans-editorial font-semibold uppercase tracking-wider text-[#777169] dark:text-[#a8a29e] px-2 mb-1.5 flex items-center justify-between">
               <span>Recent Documents</span>
               <span className="text-[10px] font-normal">{documents.length}</span>
             </div>
@@ -137,7 +139,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           {documents.length === 0 ? (
             !isCollapsed && (
-              <div className="px-3 py-6 text-center text-xs text-[#6c6a64] dark:text-[#9e998f] border border-dashed border-[#e6dfd8] dark:border-[#2d2a25] rounded-lg">
+              <div className="px-3 py-6 text-center text-xs text-[#777169] dark:text-[#a8a29e] border border-dashed border-[#e7e5e4] dark:border-[#27272a] rounded-xl">
                 No recent documents.
                 <br />
                 Drop a PDF to begin.
@@ -151,20 +153,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <div
                     key={doc.id}
                     onClick={() => onSelectDocument(doc)}
-                    className={`group flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors text-xs ${
+                    className={`group flex items-center justify-between p-2.5 rounded-xl cursor-pointer transition-colors text-xs ${
                       isActive
-                        ? 'bg-[#efe9de] dark:bg-[#22201d] font-medium text-[#141413] dark:text-[#faf9f5]'
-                        : 'hover:bg-[#f5f0e8] dark:hover:bg-[#1a1917] text-[#3d3d3a] dark:text-[#cfcbc2]'
+                        ? 'bg-white dark:bg-[#1c1917] font-medium text-[#0c0a09] dark:text-[#f5f5f5] shadow-xs border border-[#e7e5e4] dark:border-[#27272a]'
+                        : 'hover:bg-white/60 dark:hover:bg-[#141210] text-[#4e4e4e] dark:text-[#d6d3d1]'
                     }`}
                   >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <FileText
-                        className={`w-3.5 h-3.5 shrink-0 ${
-                          isActive ? 'text-[#cc785c]' : 'text-[#6c6a64] dark:text-[#9e998f]'
-                        }`}
-                      />
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-6 h-6 rounded-full bg-[#f0efed] dark:bg-[#292524] flex items-center justify-center shrink-0">
+                        <FileText
+                          className={`w-3 h-3 ${
+                            isActive ? 'text-[#0c0a09] dark:text-white' : 'text-[#777169] dark:text-[#a8a29e]'
+                          }`}
+                        />
+                      </div>
                       {!isCollapsed && (
-                        <span className="truncate max-w-[140px]">{doc.filename}</span>
+                        <span className="truncate max-w-[130px]">{doc.filename}</span>
                       )}
                     </div>
 
@@ -174,7 +178,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           e.stopPropagation();
                           onDeleteDocument(doc.id);
                         }}
-                        className="opacity-0 group-hover:opacity-100 p-1 text-[#6c6a64] hover:text-[#c64545] transition-opacity"
+                        className="opacity-0 group-hover:opacity-100 p-1 text-[#777169] hover:text-[#dc2626] transition-opacity"
                         title="Delete document"
                         aria-label="Delete document"
                       >
@@ -190,17 +194,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       {/* Footer Info & Controls */}
-      <div className="p-3 border-t border-[#e6dfd8] dark:border-[#2d2a25] space-y-2">
+      <div className="p-3 border-t border-[#e7e5e4] dark:border-[#27272a] space-y-2">
         {/* MCP Architecture Status Badge */}
         {!isCollapsed && (
-          <div className="px-2.5 py-1.5 rounded-md bg-[#f5f0e8] dark:bg-[#1a1917] border border-[#e6dfd8] dark:border-[#2d2a25] flex items-center gap-2">
-            <Cpu className="w-3.5 h-3.5 text-[#5db8a6] shrink-0" />
+          <div className="px-3 py-2 rounded-xl bg-white dark:bg-[#1c1b18] border border-[#e7e5e4] dark:border-[#27272a] flex items-center gap-2.5 shadow-xs">
+            <Cpu className="w-3.5 h-3.5 text-[#292524] dark:text-[#f5f5f5] shrink-0" />
             <div className="min-w-0 flex-1">
-              <div className="text-[10px] font-semibold text-[#141413] dark:text-[#faf9f5] flex items-center gap-1">
+              <div className="text-[10px] font-semibold text-[#0c0a09] dark:text-[#f5f5f5] flex items-center gap-1.5">
                 <span>MCP Protocol</span>
-                <span className="w-1.5 h-1.5 rounded-full bg-[#5db872] inline-block" />
+                <span className="w-1.5 h-1.5 rounded-full bg-[#16a34a] inline-block" />
               </div>
-              <p className="text-[9px] text-[#6c6a64] dark:text-[#9e998f] truncate">
+              <p className="text-[9px] text-[#777169] dark:text-[#a8a29e] truncate">
                 Ingestion & Query MCP Hooks
               </p>
             </div>
@@ -211,17 +215,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {!isCollapsed && (
           <button
             onClick={onToggleMock}
-            className="w-full px-2.5 py-1.5 rounded-md hover:bg-[#f5f0e8] dark:hover:bg-[#1a1917] flex items-center justify-between text-xs text-[#3d3d3a] dark:text-[#cfcbc2] transition-colors"
+            className="w-full px-3 py-2 rounded-xl hover:bg-white dark:hover:bg-[#1c1b18] flex items-center justify-between text-xs text-[#4e4e4e] dark:text-[#d6d3d1] transition-colors"
             title="Toggle client-side mock simulation for testing without backend"
           >
             <div className="flex items-center gap-2">
-              <Layers className="w-3.5 h-3.5 text-[#cc785c]" />
+              <Layers className="w-3.5 h-3.5 text-[#777169]" />
               <span className="text-[11px]">Dev Mock Mode</span>
             </div>
             {isMock ? (
-              <ToggleRight className="w-4 h-4 text-[#cc785c]" />
+              <ToggleRight className="w-4 h-4 text-[#292524] dark:text-white" />
             ) : (
-              <ToggleLeft className="w-4 h-4 text-[#6c6a64]" />
+              <ToggleLeft className="w-4 h-4 text-[#a8a29e]" />
             )}
           </button>
         )}
@@ -229,16 +233,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Theme Toggle Button */}
         <button
           onClick={onToggleTheme}
-          className="w-full flex items-center justify-center lg:justify-start gap-2 p-2 rounded-lg hover:bg-[#f5f0e8] dark:hover:bg-[#1a1917] text-xs font-sans-body text-[#3d3d3a] dark:text-[#cfcbc2] transition-colors"
-          title={isDark ? 'Switch to Cream Light' : 'Switch to Obsidian Dark'}
+          className="w-full flex items-center justify-center lg:justify-start gap-2.5 p-2 rounded-xl hover:bg-white dark:hover:bg-[#1c1b18] text-xs font-sans-editorial text-[#4e4e4e] dark:text-[#d6d3d1] transition-colors"
+          title={isDark ? 'Switch to Off-white Canvas' : 'Switch to Dark Deep'}
         >
           {isDark ? (
-            <Sun className="w-4 h-4 text-[#e8a55a]" />
+            <Sun className="w-4 h-4 text-[#f4c5a8]" />
           ) : (
-            <Moon className="w-4 h-4 text-[#6c6a64]" />
+            <Moon className="w-4 h-4 text-[#777169]" />
           )}
           {!isCollapsed && (
-            <span>{isDark ? 'Editorial Cream Light' : 'Obsidian Dark'}</span>
+            <span>{isDark ? 'Light Canvas' : 'Dark Deep'}</span>
           )}
         </button>
       </div>

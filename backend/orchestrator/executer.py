@@ -339,6 +339,7 @@ class Executer:
 
         while self.session:
             async for response in self.session.receive():
+                print("[DEBUG] Gemini response received:", repr(response))
                 if response.tool_call:
                     await self.handle_tool_calls(
                         response.tool_call

@@ -9,7 +9,7 @@ import type {
 const API_BASE = '/api';
 
 // Local storage key for mock mode toggle
-const MOCK_MODE_STORAGE_KEY = 'aethelgard_mock_mode';
+const MOCK_MODE_STORAGE_KEY = 'elevenlabs_mock_mode';
 
 export function isMockMode(): boolean {
   if (typeof window === 'undefined') return false;
@@ -248,7 +248,7 @@ export async function sendChatMessage(
       content: `### Synthesized Response (Mock Mode)\n\nBased on **Page 2** of the document:\n\n> "${mockCitation.snippet}"\n\nYour inquiry regarding *"${message}"* was analyzed across the indexed text chunks. Once the real backend with Gemini Live and MCP is active, live grounded reasoning with citations will reflect the uploaded document's contents.`,
       sources: [mockCitation],
       timestamp: new Date().toISOString(),
-      model: 'aethelgard-mock-synthesizer',
+      model: 'elevenlabs-mock-synthesizer',
     };
     return reply;
   }

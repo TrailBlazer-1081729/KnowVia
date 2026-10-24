@@ -1,3 +1,4 @@
+import asyncio
 import sys
 from pathlib import Path
 from contextlib import AsyncExitStack
@@ -19,54 +20,58 @@ SERVERS = {
 class MCPClientManager:
     def __init__(self):
         self.sessions = {}
+        self.tool_to_session = {}
         self.exit_stack = AsyncExitStack()
+        self._lock = asyncio.Lock()
 
     async def connect(self):
-        if self.sessions:
-            return
+        async with self._lock:
+            if self.sessions:
+                return
 
-        try:
-            for name, path in SERVERS.items():
-                if not path.exists():
-                    raise FileNotFoundError(
-                        f"MCP server file not found: {path}"
+            try:
+                for name, path in SERVERS.items():
+                    if not path.exists():
+                        raise FileNotFoundError(
+                            f"MCP server file not found: {path}"
+                        )
+
+                    print(
+                        f"Connecting to MCP server: {name}",
+                        flush=True,
                     )
 
-                print(
-                    f"Connecting to MCP server: {name}",
-                    flush=True,
-                )
-
-                params = StdioServerParameters(
-                    command=sys.executable,
-                    args=["-u", str(path)],
-                )
-
-                read_stream, write_stream = (
-                    await self.exit_stack.enter_async_context(
-                        stdio_client(params)
+                    params = StdioServerParameters(
+                        command=sys.executable,
+                        args=["-u", str(path)],
                     )
-                )
 
-                session = await self.exit_stack.enter_async_context(
-                    ClientSession(read_stream, write_stream)
-                )
+                    read_stream, write_stream = (
+                        await self.exit_stack.enter_async_context(
+                            stdio_client(params)
+                        )
+                    )
 
-                await session.initialize()
+                    session = await self.exit_stack.enter_async_context(
+                        ClientSession(read_stream, write_stream)
+                    )
 
-                self.sessions[name] = session
+                    await session.initialize()
 
-                print(
-                    f"Connected to {name}",
-                    flush=True,
-                )
+                    self.sessions[name] = session
 
-        except Exception:
-            await self.close()
-            raise
+                    print(
+                        f"Connected to {name}",
+                        flush=True,
+                    )
+
+            except Exception:
+                await self._close_internal()
+                raise
 
     async def get_tools(self):
         tools = {}
+        self.tool_to_session.clear()
 
         for server_name, session in self.sessions.items():
             result = await session.list_tools()
@@ -77,6 +82,7 @@ class MCPClientManager:
                         f"Duplicate MCP tool name: {tool.name}"
                     )
 
+                self.tool_to_session[tool.name] = session
                 tools[tool.name] = {
                     "server": server_name,
                     "description": tool.description,
@@ -86,6 +92,12 @@ class MCPClientManager:
         return tools
 
     async def call_tool(self, tool_name: str, arguments: dict):
+        if tool_name in self.tool_to_session:
+            return await self.tool_to_session[tool_name].call_tool(
+                tool_name,
+                arguments,
+            )
+
         for session in self.sessions.values():
             result = await session.list_tools()
 
@@ -93,6 +105,7 @@ class MCPClientManager:
                 tool.name == tool_name
                 for tool in result.tools
             ):
+                self.tool_to_session[tool_name] = session
                 return await session.call_tool(
                     tool_name,
                     arguments,
@@ -103,6 +116,13 @@ class MCPClientManager:
         )
 
     async def close(self):
-        await self.exit_stack.aclose()
-        self.sessions.clear()
-        self.exit_stack = AsyncExitStack()
+        async with self._lock:
+            await self._close_internal()
+
+    async def _close_internal(self):
+        try:
+            await self.exit_stack.aclose()
+        finally:
+            self.sessions.clear()
+            self.tool_to_session.clear()
+            self.exit_stack = AsyncExitStack()

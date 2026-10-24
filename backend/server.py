@@ -1,7 +1,9 @@
 import asyncio
+import json
 import os
 import uuid
 import time
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional, Dict, Any
@@ -12,6 +14,7 @@ from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
 import pypdf
+from google.genai import types
 from backend.gemini import get_gemini_client, get_model_name
 from backend.client_manager import MCPClientManager
 
@@ -21,10 +24,28 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 UPLOAD_DIR = BASE_DIR / "backend" / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
+# Shared MCP Client Manager across application lifespan
+mcp_manager = MCPClientManager()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    try:
+        await mcp_manager.connect()
+        print("[Lifespan] MCP Client Manager connected successfully.", flush=True)
+    except Exception as exc:
+        print(f"[Lifespan Notice] MCP connect notice: {exc}", flush=True)
+    yield
+    try:
+        await mcp_manager.close()
+        print("[Lifespan] MCP Client Manager closed.", flush=True)
+    except Exception as exc:
+        print(f"[Lifespan Warning] MCP close error: {exc}", flush=True)
+
 app = FastAPI(
     title="RAG Voice Assistant API",
     description="Backend API and MCP orchestration boundary for PDF RAG Research and Voice Assistant",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 # CORS middleware for local frontend development
@@ -108,31 +129,22 @@ SESSIONS: Dict[str, SessionInfo] = {}
 INGESTION_TASKS: Dict[str, asyncio.Task] = {}
 
 # ---------------------------------------------------------
-# Future MCP Integration Boundary
+# MCP Integration Adapter
 # ---------------------------------------------------------
 
 class MCPIntegrationLayer:
     """
-    Typed integration adapter for future MCP servers:
+    Integration adapter for MCP servers:
     1. Ingestion MCP: accepts document reference, extracts, embeds, indexes.
     2. Query MCP: performs vector search and returns context with citations.
     """
-    def __init__(self):
-        self.mcp_manager = MCPClientManager()
-        self._connected = False
-
-    async def ensure_connected(self):
-        if not self._connected:
-            try:
-                await self.mcp_manager.connect()
-                self._connected = True
-            except Exception as e:
-                # Log without crashing if external MCPs are not yet set up
-                print(f"[MCP Integration] Notice: MCP manager init note: {e}")
+    def __init__(self, manager: MCPClientManager):
+        self.mcp_manager = manager
 
     async def call_ingestion_mcp(self, document_id: str, file_path: str) -> Optional[Dict[str, Any]]:
         """Hook to be invoked when Ingestion MCP server is installed."""
-        await self.ensure_connected()
+        if not self.mcp_manager.sessions:
+            return None
         try:
             tools = await self.mcp_manager.get_tools()
             if "ingest_pdf" in tools or "ingest_document" in tools:
@@ -140,12 +152,13 @@ class MCPIntegrationLayer:
                 result = await self.mcp_manager.call_tool(tool_name, {"document_id": document_id, "file_path": file_path})
                 return {"success": True, "result": result}
         except Exception as exc:
-            print(f"[MCP Integration] Ingestion MCP not active: {exc}")
+            print(f"[MCP Integration] Ingestion MCP notice: {exc}")
         return None
 
     async def call_query_mcp(self, document_id: str, query: str) -> Optional[Dict[str, Any]]:
         """Hook to be invoked when Query MCP server is installed."""
-        await self.ensure_connected()
+        if not self.mcp_manager.sessions:
+            return None
         try:
             tools = await self.mcp_manager.get_tools()
             if "query_document" in tools or "rag_search" in tools:
@@ -153,11 +166,11 @@ class MCPIntegrationLayer:
                 result = await self.mcp_manager.call_tool(tool_name, {"document_id": document_id, "query": query})
                 return {"success": True, "result": result}
         except Exception as exc:
-            print(f"[MCP Integration] Query MCP not active: {exc}")
+            print(f"[MCP Integration] Query MCP notice: {exc}")
         return None
 
 
-mcp_layer = MCPIntegrationLayer()
+mcp_layer = MCPIntegrationLayer(mcp_manager)
 
 
 # ---------------------------------------------------------
@@ -299,7 +312,7 @@ async def health_check():
         "service": "rag-voice-assistant",
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "gemini_available": bool(os.getenv("GEMINI_API_KEY")),
-        "mcp_active": mcp_layer._connected,
+        "mcp_active": bool(mcp_manager.sessions),
     }
 
 
@@ -568,7 +581,7 @@ async def chat_query(req: ChatRequest):
 
 
 # ---------------------------------------------------------
-# Realtime Voice Assistant WebSocket
+# Realtime Voice Assistant WebSocket (Gemini Live Audio-to-Audio)
 # ---------------------------------------------------------
 
 @app.websocket("/api/voice/live")
@@ -581,16 +594,7 @@ async def voice_live_socket(
     await websocket.accept()
     doc = DOCUMENTS.get(document_id)
 
-    # Initial handshake
-    await websocket.send_json({
-        "type": "connected",
-        "session_id": session_id,
-        "document_id": document_id,
-        "mode": "voice_realtime",
-        "mock_mode": mock,
-        "document_ready": bool(doc and doc.status == "ready"),
-    })
-
+    # 1. Validate document existence and readiness
     if not doc or doc.status != "ready":
         await websocket.send_json({
             "type": "error",
@@ -599,107 +603,311 @@ async def voice_live_socket(
         await websocket.close(code=1008)
         return
 
+    # 2. Validate API key
+    if not os.getenv("GEMINI_API_KEY"):
+        await websocket.send_json({
+            "type": "error",
+            "message": "GEMINI_API_KEY is missing from backend environment (.env).",
+        })
+        await websocket.close(code=1008)
+        return
+
+    # 3. Prepare grounded document context for Gemini Live system instruction
+    chunks = DOCUMENT_CHUNKS.get(document_id, [])
+    doc_context_lines = []
+    for c in chunks:
+        p_num = c.get("page", 1)
+        doc_context_lines.append(f"[Page {p_num}]: {c.get('text', '')}")
+    doc_context_str = "\n\n".join(doc_context_lines)
+    if len(doc_context_str) > 50000:
+        doc_context_str = doc_context_str[:50000] + "\n...[truncated for length]..."
+
+    system_instruction = (
+        f"You are a helpful and knowledgeable real-time AI research assistant analyzing the document '{doc.filename}'.\n"
+        "Ground your explanations strictly in the document excerpts provided below.\n"
+        "When explaining facts, methodology, findings, numbers, or conclusions, explicitly cite the specific page numbers (e.g. 'According to Page 2...').\n"
+        "If the answer is not contained in the document, state so honestly, or use your available search tools if external research is requested.\n"
+        "Keep your spoken answers concise, natural, scholarly, and direct.\n\n"
+        f"--- INGESTED DOCUMENT EXCERPTS ({doc.filename}) ---\n"
+        f"{doc_context_str}\n"
+        "--- END OF DOCUMENT EXCERPTS ---"
+    )
+
+    # 4. Discover connected MCP tools (testing1, testing2, search_web, etc.)
     try:
-        while True:
-            data = await websocket.receive_json()
-            msg_type = data.get("type")
-
-            if msg_type == "ping":
-                await websocket.send_json({"type": "pong"})
-                continue
-
-            elif msg_type == "audio_chunk":
-                # Simulated or real PCM chunk from microphone
-                # Notify client that audio is received and assistant is listening
-                await websocket.send_json({
-                    "type": "state",
-                    "state": "listening",
-                })
-
-            elif msg_type == "end_turn":
-                # User stopped speaking; process grounded query
-                user_transcript = data.get("transcription") or "Can you summarize the methodology described in this paper?"
-                await websocket.send_json({
-                    "type": "input_transcription",
-                    "text": user_transcript,
-                })
-                await websocket.send_json({
-                    "type": "state",
-                    "state": "processing",
-                })
-
-                await asyncio.sleep(0.6)  # deliberate conversational cadence
-
-                # Grounded retrieval
-                relevant_chunks = find_relevant_chunks(document_id, user_transcript, top_k=2)
-                sources = [
-                    {
-                        "id": f"src_{i+1}",
-                        "page": c["page"],
-                        "section": c.get("section", f"Page {c['page']}"),
-                        "snippet": c["text"][:180] + "...",
-                        "relevance_score": c.get("relevance_score", 0.9),
-                    }
-                    for i, c in enumerate(relevant_chunks)
-                ]
-
-                # Voice response generation
-                spoken_response = ""
-                try:
-                    client = get_gemini_client()
-                    ctx_str = " ".join(c["text"] for c in relevant_chunks)
-                    prompt = (
-                        f"You are speaking live to a researcher about '{doc.filename}'. "
-                        f"Document Context: {ctx_str[:1500]}\n"
-                        f"Researcher asked: {user_transcript}\n"
-                        "Give a spoken, natural, concise response (2-3 sentences max) directly referencing the document."
-                    )
-                    gen_res = await client.aio.models.generate_content(
-                        model=get_model_name(),
-                        contents=[prompt],
-                    )
-                    spoken_response = gen_res.text or "I found the relevant section on page 1 of your document."
-                except Exception:
-                    p_num = sources[0]["page"] if sources else 1
-                    spoken_response = (
-                        f"According to page {p_num} of {doc.filename}, the document outlines key experimental parameters "
-                        "and confirms consistent findings under verified conditions."
-                    )
-
-                await websocket.send_json({
-                    "type": "state",
-                    "state": "speaking",
-                })
-                await websocket.send_json({
-                    "type": "output_transcription",
-                    "text": spoken_response,
-                })
-                if sources:
-                    await websocket.send_json({
-                        "type": "sources",
-                        "items": sources,
-                    })
-
-                # Simulate streaming speech completion
-                await asyncio.sleep(1.2)
-                await websocket.send_json({
-                    "type": "turn_complete",
-                })
-                await websocket.send_json({
-                    "type": "state",
-                    "state": "listening",
-                })
-
-            elif msg_type == "stop":
-                await websocket.send_json({
-                    "type": "state",
-                    "state": "idle",
-                })
-
-    except WebSocketDisconnect:
-        print(f"[WebSocket] Voice session {session_id} disconnected.")
+        await mcp_manager.connect()
+        tools_dict = await mcp_manager.get_tools()
     except Exception as exc:
-        print(f"[WebSocket Error] {exc}")
+        print(f"[WebSocket] MCP discovery warning: {exc}")
+        tools_dict = {}
+
+    declarations = []
+    for name, tool_info in tools_dict.items():
+        declarations.append(
+            types.FunctionDeclaration(
+                name=name,
+                description=tool_info.get("description") or name,
+                parameters_json_schema=tool_info["input_schema"],
+            )
+        )
+
+    config = types.LiveConnectConfig(
+        response_modalities=["AUDIO"],
+        tools=[types.Tool(function_declarations=declarations)] if declarations else None,
+        system_instruction=system_instruction,
+        input_audio_transcription=types.AudioTranscriptionConfig(),
+        output_audio_transcription=types.AudioTranscriptionConfig(),
+    )
+
+    # 5. Connect to Gemini Live session
+    client = get_gemini_client()
+    live_context = client.aio.live.connect(
+        model="gemini-3.8-live",
+        config=config,
+    )
+
+    try:
+        live_session = await live_context.__aenter__()
+    except Exception as exc:
+        print(f"[WebSocket Error] Could not connect to Gemini Live: {exc}", flush=True)
+        await websocket.send_json({
+            "type": "error",
+            "message": f"Could not connect to Gemini Live: {str(exc)}",
+        })
+        await websocket.close(code=1011)
+        return
+
+    # 6. Handshake confirmation
+    await websocket.send_json({
+        "type": "connected",
+        "session_id": session_id,
+        "document_id": document_id,
+        "document_name": doc.filename,
+        "mode": "voice_realtime",
+        "mock_mode": False,
+        "document_ready": True,
+    })
+    await websocket.send_json({
+        "type": "state",
+        "state": "listening",
+    })
+
+    stop_event = asyncio.Event()
+
+    async def client_to_gemini():
+        """Receive microphone audio chunks and control frames from the client and stream to Gemini Live."""
+        try:
+            while not stop_event.is_set():
+                msg = await websocket.receive()
+                if msg["type"] == "websocket.disconnect":
+                    break
+
+                # Binary frame: raw 16kHz 16-bit PCM microphone audio
+                if "bytes" in msg and msg["bytes"]:
+                    await live_session.send_realtime_input(
+                        audio=types.Blob(
+                            data=msg["bytes"],
+                            mime_type="audio/pcm;rate=16000",
+                        )
+                    )
+                elif "text" in msg and msg["text"]:
+                    try:
+                        data = json.loads(msg["text"])
+                    except Exception:
+                        continue
+
+                    mtype = data.get("type")
+                    if mtype == "ping":
+                        await websocket.send_json({"type": "pong"})
+                    elif mtype == "stop":
+                        stop_event.set()
+                        break
+                    elif mtype == "end_turn":
+                        await live_session.send_realtime_input(audio_stream_end=True)
+                    elif mtype == "text" and "text" in data:
+                        await live_session.send(input=data["text"], end_of_turn=True)
+                    elif mtype == "interrupt":
+                        # Client signal barge-in
+                        pass
+        except WebSocketDisconnect:
+            pass
+        except asyncio.CancelledError:
+            pass
+        except Exception as exc:
+            print(f"[WebSocket client_to_gemini error] {exc}", flush=True)
+        finally:
+            stop_event.set()
+
+    async def gemini_to_client():
+        """Receive audio streams, tool requests, and transcriptions from Gemini Live and forward to client."""
+        try:
+            while not stop_event.is_set():
+                async for response in live_session.receive():
+                    if stop_event.is_set():
+                        break
+
+                    # A. Tool Call Execution
+                    if response.tool_call:
+                        await websocket.send_json({
+                            "type": "state",
+                            "state": "executing_tool",
+                        })
+                        responses = []
+                        for fc in response.tool_call.function_calls:
+                            call_id = fc.id or f"call_{uuid.uuid4().hex[:8]}"
+                            server_name = tools_dict.get(fc.name, {}).get("server", "mcp")
+                            await websocket.send_json({
+                                "type": "tool_call",
+                                "id": call_id,
+                                "name": fc.name,
+                                "server": server_name,
+                                "arguments": fc.args or {},
+                                "status": "running",
+                            })
+                            try:
+                                tool_res = await mcp_manager.call_tool(fc.name, fc.args or {})
+                                content = [
+                                    item.text
+                                    for item in tool_res.content
+                                    if hasattr(item, "text")
+                                ]
+                                res_data = {"result": content, "is_error": tool_res.isError}
+                                status = "failed" if tool_res.isError else "completed"
+                            except Exception as texc:
+                                res_data = {"error": str(texc), "is_error": True}
+                                status = "failed"
+
+                            await websocket.send_json({
+                                "type": "tool_result",
+                                "id": call_id,
+                                "name": fc.name,
+                                "server": server_name,
+                                "status": status,
+                                "result": res_data.get("result"),
+                                "error": res_data.get("error"),
+                            })
+                            responses.append(
+                                types.FunctionResponse(
+                                    id=fc.id,
+                                    name=fc.name,
+                                    response=res_data,
+                                )
+                            )
+
+                        await live_session.send_tool_response(function_responses=responses)
+
+                    # B. Server Content
+                    sc = response.server_content
+                    if sc is None:
+                        continue
+
+                    # Interruption (barge-in)
+                    if sc.interrupted:
+                        await websocket.send_json({"type": "interrupted"})
+                        await websocket.send_json({"type": "state", "state": "listening"})
+
+                    # Input speech transcription
+                    if sc.input_transcription and sc.input_transcription.text:
+                        text = sc.input_transcription.text
+                        await websocket.send_json({
+                            "type": "input_transcription",
+                            "text": text,
+                        })
+                        relevant = find_relevant_chunks(document_id, text, top_k=2)
+                        if relevant:
+                            sources = [
+                                {
+                                    "id": f"src_{i+1}",
+                                    "page": c["page"],
+                                    "section": c.get("section", f"Page {c['page']}"),
+                                    "snippet": c["text"][:180] + ("..." if len(c["text"]) > 180 else ""),
+                                    "relevance_score": c.get("relevance_score", 0.9),
+                                }
+                                for i, c in enumerate(relevant)
+                            ]
+                            await websocket.send_json({
+                                "type": "sources",
+                                "items": sources,
+                                "document_name": doc.filename,
+                                "query": text,
+                            })
+
+                    # Output speech transcription
+                    if sc.output_transcription and sc.output_transcription.text:
+                        text = sc.output_transcription.text
+                        await websocket.send_json({
+                            "type": "output_transcription",
+                            "text": text,
+                        })
+                        relevant = find_relevant_chunks(document_id, text, top_k=2)
+                        if relevant:
+                            sources = [
+                                {
+                                    "id": f"src_{i+1}",
+                                    "page": c["page"],
+                                    "section": c.get("section", f"Page {c['page']}"),
+                                    "snippet": c["text"][:180] + ("..." if len(c["text"]) > 180 else ""),
+                                    "relevance_score": c.get("relevance_score", 0.9),
+                                }
+                                for i, c in enumerate(relevant)
+                            ]
+                            await websocket.send_json({
+                                "type": "sources",
+                                "items": sources,
+                                "document_name": doc.filename,
+                            })
+
+                    # Streaming PCM audio output chunks (24kHz 16-bit mono) & text
+                    if sc.model_turn:
+                        await websocket.send_json({"type": "state", "state": "speaking"})
+                        for part in sc.model_turn.parts:
+                            if hasattr(part, "text") and part.text:
+                                await websocket.send_json({"type": "text", "delta": part.text})
+                            if part.inline_data and part.inline_data.data:
+                                await websocket.send_bytes(part.inline_data.data)
+
+                    # Turn complete
+                    if sc.turn_complete:
+                        await websocket.send_json({"type": "turn_complete"})
+                        await websocket.send_json({"type": "state", "state": "listening"})
+
+        except WebSocketDisconnect:
+            pass
+        except asyncio.CancelledError:
+            pass
+        except Exception as exc:
+            print(f"[WebSocket gemini_to_client error] {exc}", flush=True)
+            try:
+                await websocket.send_json({"type": "error", "message": str(exc)})
+            except Exception:
+                pass
+        finally:
+            stop_event.set()
+
+    sender_task = asyncio.create_task(client_to_gemini())
+    receiver_task = asyncio.create_task(gemini_to_client())
+
+    try:
+        await asyncio.wait(
+            [sender_task, receiver_task],
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+    finally:
+        stop_event.set()
+        sender_task.cancel()
+        receiver_task.cancel()
+        await asyncio.gather(sender_task, receiver_task, return_exceptions=True)
+
+        try:
+            await live_context.__aexit__(None, None, None)
+        except Exception as exc:
+            print(f"[WebSocket live cleanup notice] {exc}", flush=True)
+
+        try:
+            await websocket.close()
+        except Exception:
+            pass
+        print(f"[WebSocket] Voice session {session_id} cleanly closed.", flush=True)
 
 
 if __name__ == "__main__":

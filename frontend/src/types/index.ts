@@ -74,4 +74,37 @@ export type VoiceState =
   | 'listening'
   | 'processing'
   | 'speaking'
+  | 'executing_tool'
   | 'error';
+
+export interface ToolInvocation {
+  id: string;
+  name: string;
+  server: string;
+  arguments?: Record<string, unknown>;
+  status: 'running' | 'completed' | 'failed';
+  result?: unknown;
+  error?: string;
+  timestamp: string;
+  duration?: string;
+  startTime?: number;
+}
+
+export interface VoiceTurn {
+  id: string;
+  userText?: string;
+  assistantText: string;
+  isStreaming?: boolean;
+  citations?: SourceCitation[];
+  documentName?: string;
+  timestamp: string;
+}
+
+export interface AgentActivityItem {
+  id: string;
+  type: 'retrieval' | 'tool' | 'generation' | 'barge_in';
+  title: string;
+  detail?: string;
+  status: 'running' | 'completed' | 'failed';
+  timestamp: string;
+}

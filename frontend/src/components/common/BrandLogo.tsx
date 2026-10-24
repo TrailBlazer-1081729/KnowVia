@@ -6,33 +6,27 @@ interface BrandLogoProps {
 
 export const BrandLogo: React.FC<BrandLogoProps> = ({ compact = false }) => {
   return (
-    <div className="flex items-center gap-3 select-none">
-      {/* Signature 4-spoke radial spike glyph inspired by DESIGN.md Anthropic mark */}
-      <div className="relative w-8 h-8 rounded-lg bg-[#cc785c] text-white flex items-center justify-center shadow-sm shrink-0">
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="w-5 h-5 text-white"
-        >
-          {/* 4-spoke asterisk mark */}
-          <line x1="12" y1="3" x2="12" y2="21" />
-          <line x1="3" y1="12" x2="21" y2="12" />
-          <line x1="5.6" y1="5.6" x2="18.4" y2="18.4" />
-          <line x1="5.6" y1="18.4" x2="18.4" y2="5.6" />
-        </svg>
+    <div className="flex items-center gap-2.5 select-none">
+      {/* ElevenLabs iconic dual audio vertical bar mark */}
+      <div className="w-8 h-8 rounded-full bg-[#292524] dark:bg-[#f5f5f5] text-white dark:text-[#0c0a09] flex items-center justify-center shrink-0 shadow-xs">
+        <div className="flex items-center gap-1">
+          <div className="w-1 h-3.5 rounded-full bg-white dark:bg-[#0c0a09]" />
+          <div className="w-1 h-4.5 rounded-full bg-white dark:bg-[#0c0a09]" />
+        </div>
       </div>
 
       {!compact && (
         <div className="flex flex-col">
-          <span className="font-serif-display text-lg font-medium tracking-tight text-[#141413] dark:text-[#faf9f5] leading-none">
-            Aethelgard
-          </span>
-          <span className="text-[10px] tracking-wider uppercase font-sans-body font-medium text-[#6c6a64] dark:text-[#9e998f] mt-1">
-            Research Workspace
+          <div className="flex items-center gap-1.5">
+            <span className="font-sans-editorial text-sm font-semibold tracking-tight text-[#0c0a09] dark:text-[#f5f5f5] leading-none">
+              ElevenLabs
+            </span>
+            <span className="text-[10px] px-1.5 py-0.2 rounded-full font-mono bg-[#f0efed] dark:bg-[#292524] text-[#777169] dark:text-[#a8a29e]">
+              RAG
+            </span>
+          </div>
+          <span className="text-[10px] tracking-wider uppercase font-sans-editorial text-[#777169] dark:text-[#a8a29e] mt-1">
+            Voice & Research Intelligence
           </span>
         </div>
       )}

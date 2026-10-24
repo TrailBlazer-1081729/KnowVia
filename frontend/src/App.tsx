@@ -25,7 +25,7 @@ export function App() {
   // Theme & Mock Mode State
   const [isDark, setIsDark] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('aethelgard_theme');
+      const stored = localStorage.getItem('elevenlabs_theme');
       if (stored) return stored === 'dark';
       return window.matchMedia('(prefers-color-scheme: dark)').matches;
     }
@@ -73,10 +73,10 @@ export function App() {
   useEffect(() => {
     if (isDark) {
       document.documentElement.classList.add('dark');
-      localStorage.setItem('aethelgard_theme', 'dark');
+      localStorage.setItem('elevenlabs_theme', 'dark');
     } else {
       document.documentElement.classList.remove('dark');
-      localStorage.setItem('aethelgard_theme', 'light');
+      localStorage.setItem('elevenlabs_theme', 'light');
     }
   }, [isDark]);
 
@@ -217,7 +217,6 @@ export function App() {
     setErrorMessage(null);
     setActiveSources([]);
 
-    // Auto-close sidebar on mobile after selection
     if (window.innerWidth < 1024) {
       setIsSidebarCollapsed(true);
     }
@@ -296,7 +295,7 @@ export function App() {
   const showConversationWorkspace = currentDocument && currentDocument.status === 'ready';
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[#faf9f5] dark:bg-[#121211] font-sans-body antialiased">
+    <div className="flex h-screen w-screen overflow-hidden bg-[#f5f5f5] dark:bg-[#0c0a09] font-sans-editorial antialiased">
       {/* Mobile Backdrop for Sidebar */}
       {!isSidebarCollapsed && (
         <div
@@ -323,11 +322,11 @@ export function App() {
       {/* 2. Main Workspace */}
       <main className="flex-1 flex flex-col h-full min-w-0 overflow-hidden relative">
         {/* Top Navbar */}
-        <header className="h-14 border-b border-[#e6dfd8] dark:border-[#2d2a25] px-3 md:px-6 flex items-center justify-between bg-[#faf9f5] dark:bg-[#121211] shrink-0 z-20">
+        <header className="h-14 border-b border-[#e7e5e4] dark:border-[#27272a] px-3 md:px-6 flex items-center justify-between bg-[#f5f5f5] dark:bg-[#0c0a09] shrink-0 z-20">
           <div className="flex items-center gap-2 md:gap-3 min-w-0">
             <button
               onClick={() => setIsSidebarCollapsed((prev) => !prev)}
-              className="p-1.5 rounded-md hover:bg-[#efe9de] dark:hover:bg-[#22201d] text-[#6c6a64] dark:text-[#9e998f]"
+              className="p-1.5 rounded-full hover:bg-[#f0efed] dark:hover:bg-[#1c1917] text-[#777169] dark:text-[#a8a29e]"
               aria-label="Toggle Navigation"
             >
               <Menu className="w-5 h-5" />
@@ -335,25 +334,25 @@ export function App() {
 
             {currentDocument ? (
               <div className="flex items-center gap-2 truncate">
-                <FileText className="w-4 h-4 text-[#cc785c] shrink-0" />
-                <span className="text-xs md:text-sm font-medium text-[#141413] dark:text-[#faf9f5] truncate max-w-[120px] sm:max-w-[200px] md:max-w-xs">
+                <FileText className="w-4 h-4 text-[#0c0a09] dark:text-[#f5f5f5] shrink-0" />
+                <span className="text-xs md:text-sm font-medium font-sans-editorial text-[#0c0a09] dark:text-[#f5f5f5] truncate max-w-[120px] sm:max-w-[200px] md:max-w-xs">
                   {currentDocument.filename}
                 </span>
                 <span
                   className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
                     currentDocument.status === 'ready'
-                      ? 'bg-[#5db872]/15 text-[#5db872]'
-                      : 'bg-[#e8a55a]/15 text-[#e8a55a]'
+                      ? 'bg-[#16a34a]/10 text-[#16a34a] dark:text-[#22c55e]'
+                      : 'bg-[#f0efed] text-[#777169] dark:text-[#a8a29e]'
                   }`}
                 >
                   {currentDocument.status}
                 </span>
               </div>
             ) : (
-              <div className="flex items-center gap-2 text-xs text-[#6c6a64] dark:text-[#9e998f]">
-                <Sparkles className="w-4 h-4 text-[#cc785c]" />
-                <span className="font-serif-display text-sm text-[#141413] dark:text-[#faf9f5]">
-                  New Research Workspace
+              <div className="flex items-center gap-2 text-xs text-[#777169] dark:text-[#a8a29e]">
+                <Sparkles className="w-4 h-4 text-[#0c0a09] dark:text-[#f5f5f5]" />
+                <span className="font-display-light text-base text-[#0c0a09] dark:text-[#f5f5f5]">
+                  Research Workspace
                 </span>
               </div>
             )}
@@ -370,10 +369,10 @@ export function App() {
 
             <button
               onClick={() => setIsContextPanelOpen((prev) => !prev)}
-              className={`p-1.5 rounded-lg border transition-colors ${
+              className={`p-1.5 rounded-full border transition-colors ${
                 isContextPanelOpen
-                  ? 'bg-[#efe9de] dark:bg-[#22201d] border-[#cc785c]/40 text-[#cc785c]'
-                  : 'bg-transparent border-[#e6dfd8] dark:border-[#2d2a25] text-[#6c6a64] dark:text-[#9e998f] hover:bg-[#efe9de] dark:hover:bg-[#22201d]'
+                  ? 'bg-white dark:bg-[#1c1917] border-[#0c0a09] dark:border-white text-[#0c0a09] dark:text-[#f5f5f5]'
+                  : 'bg-transparent border-[#e7e5e4] dark:border-[#27272a] text-[#777169] dark:text-[#a8a29e] hover:bg-[#f0efed] dark:hover:bg-[#1c1917]'
               }`}
               title={isContextPanelOpen ? 'Hide Document Intelligence' : 'Show Document Intelligence'}
               aria-label="Toggle Document Intelligence Panel"
