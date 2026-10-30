@@ -10,11 +10,14 @@ from mcp.client.stdio import stdio_client
 BASE_DIR = Path(__file__).resolve().parent.parent
 MCP_DIR = BASE_DIR / "mcps"
 
+
 SERVERS = {
-    "add": MCP_DIR / "add.py",
-    "multiply": MCP_DIR / "multi.py",
     "web_search": MCP_DIR / "web_search.py",
+    "saved_answers": MCP_DIR / "saved_answer_mcp.py",
+    "google_calender":MCP_DIR/"google_calender_mcp.py",
+    "email":MCP_DIR/"email_mcp.py"
 }
+
 
 
 class MCPClientManager:

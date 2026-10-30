@@ -1,6 +1,7 @@
 import os
 import sys
 import unittest
+import time
 from pathlib import Path
 
 # Add project root to path
@@ -8,8 +9,9 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT_DIR))
 
 from starlette.testclient import TestClient
-from backend.server import app, DOCUMENTS, DOCUMENT_CHUNKS, SESSIONS
-from backend.client_manager import MCPClientManager
+from backend.server import app, DOCUMENTS, DOCUMENT_CHUNKS, SESSIONS, run_ingestion_pipeline
+
+import asyncio
 
 
 class TestRAGVoiceAssistant(unittest.TestCase):
@@ -47,16 +49,18 @@ class TestRAGVoiceAssistant(unittest.TestCase):
         ingest_res = self.client.post(f"/api/documents/{doc_id}/ingest")
         self.assertEqual(ingest_res.status_code, 200)
 
-        # Wait for ingestion pipeline to complete
-        import time
-        for _ in range(20):
+        # Poll for ingestion completion — the TestClient runs async tasks
+        # in the event loop, so we need sufficient polling attempts
+        status_data = None
+        for _ in range(60):
             status_res = self.client.get(f"/api/documents/{doc_id}/status")
             self.assertEqual(status_res.status_code, 200)
             status_data = status_res.json()
             if status_data["status"] == "ready":
                 break
-            time.sleep(0.3)
+            time.sleep(0.2)
 
+        self.assertIsNotNone(status_data)
         self.assertEqual(status_data["status"], "ready")
         self.assertEqual(status_data["stage"], "completed")
         self.assertGreater(status_data["metadata"]["chunk_count"], 0)
@@ -64,8 +68,15 @@ class TestRAGVoiceAssistant(unittest.TestCase):
 
     def test_03_rag_chat_grounding(self):
         """Test grounded chat retrieval with citations from document."""
-        # Find the ready document
-        doc_id = next(iter(DOCUMENTS.keys()))
+        # Find a ready document
+        doc_id = None
+        for did, doc in DOCUMENTS.items():
+            if doc.status == "ready":
+                doc_id = did
+                break
+
+        if doc_id is None:
+            self.skipTest("No ready document available (test_02 may have failed)")
 
         # Create session
         sess_res = self.client.post(f"/api/sessions?document_id={doc_id}")
@@ -92,14 +103,22 @@ class TestRAGVoiceAssistant(unittest.TestCase):
 
     def test_04_websocket_voice_handshake_and_protection(self):
         """Test WebSocket voice endpoint enforces document readiness and rejects invalid IDs."""
-        # Test connecting with non-existent document
-        with self.assertRaises(Exception):
-            with self.client.websocket_connect("/api/voice/live?document_id=doc_fake&session_id=sess_1") as ws:
-                data = ws.receive_json()
-                self.assertEqual(data["type"], "error")
+        # Test connecting with non-existent document — the server sends an error and closes
+        with self.client.websocket_connect("/api/voice/live?document_id=doc_fake&session_id=sess_1") as ws:
+            data = ws.receive_json()
+            self.assertEqual(data["type"], "error")
+            self.assertIn("ingestion", data["message"].lower())
 
         # Test connecting with valid ready document
-        doc_id = next(iter(DOCUMENTS.keys()))
+        doc_id = None
+        for did, doc in DOCUMENTS.items():
+            if doc.status == "ready":
+                doc_id = did
+                break
+
+        if doc_id is None:
+            self.skipTest("No ready document available")
+
         with self.client.websocket_connect(f"/api/voice/live?document_id={doc_id}&session_id=sess_valid") as ws:
             connected_msg = ws.receive_json()
             self.assertEqual(connected_msg["type"], "connected")

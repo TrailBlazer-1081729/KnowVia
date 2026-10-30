@@ -1,4 +1,3 @@
-
 import os
 
 from dotenv import load_dotenv
@@ -9,39 +8,38 @@ load_dotenv()
 
 mcp = FastMCP("TavilyWebSearch")
 
-
-api_key = os.getenv("tavily_api")
+api_key = os.getenv("TAVILY_API_KEY") or os.getenv("tavily_api")
 if not api_key:
     raise RuntimeError("TAVILY_API_KEY is missing from .env")
+
 tavily = TavilyClient(api_key=api_key)
 
 
 @mcp.tool()
-def search_web(query: str, max_results: int = 5) -> dict:
-    """Search the web and return relevant pages with titles, URLs, and content."""
+def search_web(query: str) -> dict:
+
+    """Search the web thoroughly and return relevant results."""
 
     if not query.strip():
         raise ValueError("Search query cannot be empty")
-    max_results = max(1, min(max_results, 10))
-
 
     response = tavily.search(
         query=query,
-        max_results=max_results,
-        search_depth="basic",
-        include_answer=False,
+        search_depth="advanced",
+        max_results=10,
+        topic="general",
     )
 
     return {
         "query": query,
         "results": [
             {
-                "title": result.get("title", ""),
-                "url": result.get("url", ""),
-                "content": result.get("content", ""),
-                "score": result.get("score", 0),
+                "title": r.get("title", ""),
+                "url": r.get("url", ""),
+                "content": r.get("content", ""),
+                "score": r.get("score", 0),
             }
-            for result in response.get("results", [])
+            for r in response.get("results", [])
         ],
     }
 
