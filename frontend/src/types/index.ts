@@ -36,6 +36,10 @@ export interface DocumentMetadata {
   error_message?: string | null;
   mcp_provider?: string;
   file_path?: string | null;
+  embedding_dimension?: number | null;
+  embedding_model?: string | null;
+  vector_collection?: string | null;
+  indexed_count?: number;
 }
 
 export interface IngestStatusResponse {

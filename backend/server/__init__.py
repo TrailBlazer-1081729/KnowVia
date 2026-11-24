@@ -21,7 +21,6 @@ from .state import (
     UPLOAD_DIR,
     mcp_manager,
 )
-from .mcp_integration import MCPIntegrationLayer, mcp_layer
 from .ingestion import get_ingestion_status, run_ingestion_pipeline, start_ingestion
 from .retrieval import find_relevant_chunks
 from .health import health_check
@@ -33,8 +32,8 @@ from backend.gemini import get_gemini_client, get_model_name
 from backend.client_manager import MCPClientManager
 
 __all__ = [
-    "app", "BASE_DIR", "UPLOAD_DIR", "mcp_manager", "mcp_layer",
-    "MCPClientManager", "MCPIntegrationLayer", "get_gemini_client", "get_model_name",
+    "app", "BASE_DIR", "UPLOAD_DIR", "mcp_manager",
+    "MCPClientManager", "get_gemini_client", "get_model_name",
     "SourceCitation", "DocumentMetadata", "IngestStatusResponse", "ChatRequest",
     "ChatMessage", "SessionInfo", "DOCUMENTS", "DOCUMENT_CHUNKS", "SESSIONS",
     "INGESTION_TASKS", "run_ingestion_pipeline", "find_relevant_chunks",

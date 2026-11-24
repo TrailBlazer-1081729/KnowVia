@@ -6,12 +6,9 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-# Keep the same Gemini integration import and environment-loading behaviour.
-from backend.gemini import get_gemini_client, get_model_name
-from backend.client_manager import MCPClientManager
-
 load_dotenv()
 
+from backend.rag import close_rag_service
 from .state import mcp_manager
 from . import chat, documents, health, ingestion, sessions, voice
 
@@ -29,6 +26,11 @@ async def lifespan(app: FastAPI):
         print("[Lifespan] MCP Client Manager closed.", flush=True)
     except Exception as exc:
         print(f"[Lifespan Warning] MCP close error: {exc}", flush=True)
+    try:
+        await close_rag_service()
+        print("[Lifespan] RAG service closed.", flush=True)
+    except Exception as exc:
+        print(f"[Lifespan Warning] RAG close error: {exc}", flush=True)
 
 
 app = FastAPI(

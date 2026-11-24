@@ -23,6 +23,40 @@ class TestRAGVoiceAssistant(unittest.TestCase):
             from create_sample_pdf import create_sample_pdf
             create_sample_pdf(str(cls.sample_pdf))
 
+        from unittest.mock import AsyncMock, MagicMock
+        from qdrant_client import AsyncQdrantClient
+        from backend.rag.config import RAGConfig
+        from backend.rag.service import RAGService, set_rag_service
+        from backend.rag.vector_store import QdrantVectorStore
+
+        config = RAGConfig(
+            jina_api_key="mock",
+            qdrant_api_key=None,
+            qdrant_url="http://localhost:6333",
+            collection_name="test_backend_v1",
+            chunk_size=500,
+            chunk_overlap=50,
+        )
+        client = AsyncQdrantClient(location=":memory:")
+        vs = QdrantVectorStore(config, client=client)
+
+        mock_embedder = MagicMock()
+
+        async def fake_embed_docs(texts):
+            return [[0.1, 0.2, 0.3, 0.4] for _ in texts]
+
+        mock_embedder.embed_documents = AsyncMock(side_effect=fake_embed_docs)
+        mock_embedder.embed_query = AsyncMock(return_value=[0.1, 0.2, 0.3, 0.4])
+        mock_embedder.close = AsyncMock()
+
+        service = RAGService(config, embedder=mock_embedder, vector_store=vs)
+        set_rag_service(service)
+
+    @classmethod
+    def tearDownClass(cls):
+        from backend.rag.service import close_rag_service
+        asyncio.run(close_rag_service())
+
     def test_01_health_check(self):
         """Test health endpoint reports healthy status."""
         response = self.client.get("/api/health")

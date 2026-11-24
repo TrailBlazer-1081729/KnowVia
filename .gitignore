@@ -15,6 +15,7 @@ env/
 # IDE and editor files
 .idea/
 .vscode/
+.kilo/
 mcps/calendar_token.json
 mcps/gmail_token.json
 mcps/credential.json

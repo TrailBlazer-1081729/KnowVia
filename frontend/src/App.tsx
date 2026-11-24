@@ -275,9 +275,7 @@ export function App() {
       const response = await api.sendChatMessage(currentSession.id, currentDocument.id, text);
       setMessages((prev) => [...prev, response]);
 
-      if (response.sources && response.sources.length > 0) {
-        setActiveSources(response.sources);
-      }
+      setActiveSources(response.sources ?? []);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error sending message';
       const errorReply: ChatMessage = {
@@ -426,6 +424,7 @@ export function App() {
                 sessionId={currentSession?.id || 'sess_voice'}
                 onSwitchToText={() => setConversationMode('text')}
                 onCitationClick={handleCitationClick}
+                onSourcesChange={(sources) => setActiveSources(sources)}
               />
             </div>
           )}

@@ -9,8 +9,8 @@ from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 from google.genai import types
 
 from backend.gemini import get_gemini_client
-from .retrieval import find_relevant_chunks
-from .state import DOCUMENTS, DOCUMENT_CHUNKS, mcp_manager
+from .retrieval import build_source_citations, find_relevant_chunks
+from .state import DOCUMENTS, mcp_manager
 
 router = APIRouter()
 
@@ -126,42 +126,23 @@ async def voice_live_socket(
         await websocket.close(code=1008)
         return
 
-    # 3. Prepare grounded document context for Gemini Live system instruction
-    chunks = DOCUMENT_CHUNKS.get(document_id, [])
-    doc_context_lines = []
-    for c in chunks:
-        p_num = c.get("page", 1)
-        doc_context_lines.append(f"[Page {p_num}]: {c.get('text', '')}")
-    doc_context_str = "\n\n".join(doc_context_lines)
-    if len(doc_context_str) > 50000:
-        doc_context_str = doc_context_str[:50000] + "\n...[truncated for length]..."
-
+    # 3. Build system instruction with tool-based retrieval
     system_instruction = f"""
-    You are a helpful, natural, human-like AI research assistant working with
-    the document "{doc.filename}". Understand the user's intent and focus on
-    completing their task, not merely explaining how to do it.
+    You are KnowVia, a natural, highly capable AI research voice assistant working with
+    the document "{doc.filename}".
 
-    - Use available MCP tools whenever they help fulfil the request. For multi-step
-      tasks, perform the necessary steps in order and use actual tool results.
-    - Ground document-related answers in the provided excerpts and cite page numbers
-      when available. Use search tools when external research is needed.
-    - Follow the user's requested content, format, and length exactly as closely
-      as possible. Never impose your own word count or shorten content that must
-      be saved or processed.
-    - If generated or retrieved content exceeds 200 words, give a concise spoken
-      summary instead of reading the entire content aloud, unless the user
-      explicitly asks you to read it in full. Always pass the complete content
-      to the appropriate tool when required.
-    - Speak naturally, warmly, and concisely. Avoid robotic narration and
-      unnecessary questions. Clarify only when essential.
-    - Never invent information or claim an action succeeded without confirmation
-      from the relevant tool. If something fails, explain it briefly.
+    You have access to tools:
+    1. `search_document`: Use this tool to search and retrieve relevant excerpts from "{doc.filename}"
+       whenever the user asks questions about the document, its contents, data, analysis, or citations.
+       Always search before answering document questions rather than guessing.
+    2. Connected MCP tools: Use external tools when needed for external tasks, calculations, or integrations.
 
-    Prioritize understanding the user's goal, completing it accurately using
-    available tools, and keeping spoken responses concise and conversational.
-
-    DOCUMENT EXCERPTS:
-    {doc_context_str}
+    Guidelines:
+    - When asked about the document, call `search_document` with a targeted query.
+    - Ground document-related answers strictly in the retrieved excerpts and cite page numbers accurately.
+    - If retrieved content is extensive, give a concise, articulate spoken summary highlighting the key facts.
+    - Speak naturally, warmly, and concisely. Keep answers conversational for voice.
+    - Never invent information or claim an action succeeded without confirmation from tools.
     """
 
     # 4. Discover connected MCP tools (testing1, testing2, search_web, etc.)
@@ -172,7 +153,22 @@ async def voice_live_socket(
         print(f"[WebSocket] MCP discovery warning: {exc}")
         tools_dict = {}
 
-    declarations = []
+    rag_declaration = types.FunctionDeclaration(
+        name="search_document",
+        description=f"Search the contents of the active document '{doc.filename}' using semantic retrieval. Returns relevant excerpts with page numbers and sections.",
+        parameters_json_schema={
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "The search query or concept to locate in the document.",
+                },
+            },
+            "required": ["query"],
+        },
+    )
+
+    declarations = [rag_declaration]
     for name, tool_info in tools_dict.items():
         declarations.append(
             types.FunctionDeclaration(
@@ -336,44 +332,110 @@ async def voice_live_socket(
                         responses = []
                         for fc in response.tool_call.function_calls:
                             call_id = fc.id or f"call_{uuid.uuid4().hex[:8]}"
-                            server_name = tools_dict.get(fc.name, {}).get("server", "mcp")
-                            await websocket.send_json({
-                                "type": "tool_call",
-                                "id": call_id,
-                                "name": fc.name,
-                                "server": server_name,
-                                "arguments": fc.args or {},
-                                "status": "running",
-                            })
-                            try:
-                                tool_res = await mcp_manager.call_tool(fc.name, fc.args or {})
-                                content = [
-                                    item.text
-                                    for item in tool_res.content
-                                    if hasattr(item, "text")
-                                ]
-                                res_data = {"result": content, "is_error": tool_res.isError}
-                                status = "failed" if tool_res.isError else "completed"
-                            except Exception as texc:
-                                res_data = {"error": str(texc), "is_error": True}
-                                status = "failed"
+                            fc_name = fc.name
+                            fc_args = fc.args or {}
 
-                            await websocket.send_json({
-                                "type": "tool_result",
-                                "id": call_id,
-                                "name": fc.name,
-                                "server": server_name,
-                                "status": status,
-                                "result": res_data.get("result"),
-                                "error": res_data.get("error"),
-                            })
-                            responses.append(
-                                types.FunctionResponse(
-                                    id=fc.id,
-                                    name=fc.name,
-                                    response=res_data,
+                            if fc_name == "search_document":
+                                server_name = "internal_rag"
+                                await websocket.send_json({
+                                    "type": "tool_call",
+                                    "id": call_id,
+                                    "name": fc_name,
+                                    "server": server_name,
+                                    "arguments": fc_args,
+                                    "status": "running",
+                                })
+                                query = str(fc_args.get("query", ""))
+                                try:
+                                    relevant = await find_relevant_chunks(document_id, query, top_k=5)
+                                    evidence = [
+                                        {
+                                            "chunk_id": c.get("id"),
+                                            "page": c.get("page"),
+                                            "section": c.get("section", f"Page {c.get('page')}"),
+                                            "content": c.get("text", ""),
+                                        }
+                                        for c in relevant
+                                    ]
+                                    citations = build_source_citations(relevant)
+                                    res_data = {
+                                        "document_id": document_id,
+                                        "document_name": doc.filename,
+                                        "query": query,
+                                        "results": evidence,
+                                        "is_error": False,
+                                    }
+                                    status = "completed"
+
+                                    # Emit source citations to frontend if turn has not been interrupted
+                                    if not is_interrupted and citations:
+                                        await websocket.send_json({
+                                            "type": "sources",
+                                            "items": [c.model_dump() for c in citations],
+                                            "document_name": doc.filename,
+                                            "query": query,
+                                            "epoch": current_generation_epoch,
+                                        })
+                                except Exception as rexc:
+                                    print(f"[WebSocket] RAG search error: {rexc}", flush=True)
+                                    res_data = {"error": str(rexc), "is_error": True, "results": []}
+                                    status = "failed"
+
+                                await websocket.send_json({
+                                    "type": "tool_result",
+                                    "id": call_id,
+                                    "name": fc_name,
+                                    "server": server_name,
+                                    "status": status,
+                                    "result": res_data,
+                                    "error": res_data.get("error"),
+                                })
+                                responses.append(
+                                    types.FunctionResponse(
+                                        id=fc.id,
+                                        name=fc.name,
+                                        response=res_data,
+                                    )
                                 )
-                            )
+                            else:
+                                server_name = tools_dict.get(fc_name, {}).get("server", "mcp")
+                                await websocket.send_json({
+                                    "type": "tool_call",
+                                    "id": call_id,
+                                    "name": fc_name,
+                                    "server": server_name,
+                                    "arguments": fc_args,
+                                    "status": "running",
+                                })
+                                try:
+                                    tool_res = await mcp_manager.call_tool(fc_name, fc_args)
+                                    content = [
+                                        item.text
+                                        for item in tool_res.content
+                                        if hasattr(item, "text")
+                                    ]
+                                    res_data = {"result": content, "is_error": tool_res.isError}
+                                    status = "failed" if tool_res.isError else "completed"
+                                except Exception as texc:
+                                    res_data = {"error": str(texc), "is_error": True}
+                                    status = "failed"
+
+                                await websocket.send_json({
+                                    "type": "tool_result",
+                                    "id": call_id,
+                                    "name": fc_name,
+                                    "server": server_name,
+                                    "status": status,
+                                    "result": res_data.get("result"),
+                                    "error": res_data.get("error"),
+                                })
+                                responses.append(
+                                    types.FunctionResponse(
+                                        id=fc.id,
+                                        name=fc.name,
+                                        response=res_data,
+                                    )
+                                )
 
                         await live_session.send_tool_response(function_responses=responses)
 
@@ -396,24 +458,6 @@ async def voice_live_socket(
                             "text": text,
                             "epoch": current_generation_epoch,
                         })
-                        relevant = find_relevant_chunks(document_id, text, top_k=2)
-                        if relevant:
-                            sources = [
-                                {
-                                    "id": f"src_{i+1}",
-                                    "page": c["page"],
-                                    "section": c.get("section", f"Page {c['page']}"),
-                                    "snippet": c["text"][:180] + ("..." if len(c["text"]) > 180 else ""),
-                                    "relevance_score": c.get("relevance_score", 0.9),
-                                }
-                                for i, c in enumerate(relevant)
-                            ]
-                            await websocket.send_json({
-                                "type": "sources",
-                                "items": sources,
-                                "document_name": doc.filename,
-                                "query": text,
-                            })
 
                     # Output speech transcription (suppressed if interrupted)
                     if sc.output_transcription and sc.output_transcription.text:
@@ -425,23 +469,6 @@ async def voice_live_socket(
                             "text": text,
                             "epoch": current_generation_epoch,
                         })
-                        relevant = find_relevant_chunks(document_id, text, top_k=2)
-                        if relevant:
-                            sources = [
-                                {
-                                    "id": f"src_{i+1}",
-                                    "page": c["page"],
-                                    "section": c.get("section", f"Page {c['page']}"),
-                                    "snippet": c["text"][:180] + ("..." if len(c["text"]) > 180 else ""),
-                                    "relevance_score": c.get("relevance_score", 0.9),
-                                }
-                                for i, c in enumerate(relevant)
-                            ]
-                            await websocket.send_json({
-                                "type": "sources",
-                                "items": sources,
-                                "document_name": doc.filename,
-                            })
 
                     # Streaming PCM audio output chunks (24kHz 16-bit mono) & text
                     if sc.model_turn:

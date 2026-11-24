@@ -5,11 +5,12 @@ import uuid
 from datetime import datetime, timezone
 from typing import List
 
-import pypdf
+import pymupdf
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
+from backend.rag import get_rag_service
 from .schemas import DocumentMetadata
-from .state import DOCUMENTS, DOCUMENT_CHUNKS, UPLOAD_DIR
+from .state import DOCUMENTS, DOCUMENT_CHUNKS, INGESTION_TASKS, SESSIONS, UPLOAD_DIR
 
 router = APIRouter()
 
@@ -50,8 +51,8 @@ async def upload_document(file: UploadFile = File(...)):
     # Inspect initial PDF properties
     page_count = 0
     try:
-        reader = pypdf.PdfReader(str(file_path))
-        page_count = len(reader.pages)
+        with pymupdf.open(str(file_path)) as pdf_doc:
+            page_count = pdf_doc.page_count
     except Exception as exc:
         print(f"Warning reading PDF header: {exc}")
         page_count = 1
@@ -73,15 +74,36 @@ async def upload_document(file: UploadFile = File(...)):
 
 @router.delete("/api/documents/{document_id}")
 async def delete_document(document_id: str):
-    doc = DOCUMENTS.pop(document_id, None)
-    DOCUMENT_CHUNKS.pop(document_id, None)
+    doc = DOCUMENTS.get(document_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found.")
 
+    # 1. Cancel active ingestion if currently running
+    active_task = INGESTION_TASKS.pop(document_id, None)
+    if active_task and not active_task.done():
+        active_task.cancel()
+
+    # 2. Delete vectors from Qdrant
+    try:
+        rag = await get_rag_service()
+        await rag.delete_document(document_id)
+    except Exception as exc:
+        print(f"[Document Deletion Notice] Qdrant vectors deletion for {document_id}: {exc}", flush=True)
+
+    # 3. Remove uploaded physical PDF file
     if doc.file_path and os.path.exists(doc.file_path):
         try:
             os.remove(doc.file_path)
         except OSError:
             pass
+
+    # 4. Remove in-memory state entries
+    DOCUMENTS.pop(document_id, None)
+    DOCUMENT_CHUNKS.pop(document_id, None)
+
+    # 5. Clean up associated session references
+    sessions_to_clear = [sid for sid, sess in SESSIONS.items() if sess.document_id == document_id]
+    for sid in sessions_to_clear:
+        SESSIONS.pop(sid, None)
 
     return {"deleted": True, "document_id": document_id}

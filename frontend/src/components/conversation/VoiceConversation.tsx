@@ -32,6 +32,7 @@ interface VoiceConversationProps {
   sessionId: string;
   onSwitchToText: () => void;
   onCitationClick?: (citation: SourceCitation) => void;
+  onSourcesChange?: (sources: SourceCitation[]) => void;
 }
 
 /**
@@ -120,6 +121,7 @@ export const VoiceConversation: React.FC<VoiceConversationProps> = ({
   sessionId,
   onSwitchToText,
   onCitationClick,
+  onSourcesChange,
 }) => {
   const [voiceState, setVoiceState] = useState<VoiceState>('idle');
   const audioLevelRef = useRef<number>(0);
@@ -139,6 +141,11 @@ export const VoiceConversation: React.FC<VoiceConversationProps> = ({
 
   const voiceServiceRef = useRef<RealtimeVoiceService | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const onSourcesChangeRef = useRef(onSourcesChange);
+
+  useEffect(() => {
+    onSourcesChangeRef.current = onSourcesChange;
+  }, [onSourcesChange]);
 
   // Auto-scroll conversation history to bottom as new speech streams
   useEffect(() => {
@@ -236,6 +243,7 @@ export const VoiceConversation: React.FC<VoiceConversationProps> = ({
           }
           setCurrentTurn({ ...currentTurnRef.current });
         }
+        onSourcesChangeRef.current?.(sources);
       },
 
       onToolCall: (invocation) => {
@@ -295,6 +303,7 @@ export const VoiceConversation: React.FC<VoiceConversationProps> = ({
       },
 
       onInterrupted: () => {
+        onSourcesChangeRef.current?.([]);
         const active = currentTurnRef.current;
         if (!active) {
           setVoiceState('listening');

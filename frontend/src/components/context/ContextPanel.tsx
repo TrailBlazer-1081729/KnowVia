@@ -107,7 +107,7 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({
                 <div>
                   <span className="text-[#a8a29e] block">Indexed Chunks</span>
                   <span className="font-medium text-[#0c0a09] dark:text-[#f5f5f5]">
-                    {document.chunk_count || document.page_count * 4}
+                    {document.indexed_count ?? document.chunk_count}
                   </span>
                 </div>
                 <div>
@@ -183,7 +183,7 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({
 
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] text-[#16a34a] dark:text-[#22c55e] font-mono font-medium">
-                          {Math.round(src.relevance_score * 100)}% match
+                          {Math.round(src.relevance_score * 100)}% similarity
                         </span>
                         <button
                           onClick={() => copySnippet(src.snippet, src.id)}
@@ -209,25 +209,33 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({
           )}
         </div>
 
-        {/* SECTION 3: MCP Architecture & Index Stats */}
+        {/* SECTION 3: RAG Architecture & Index Stats */}
         <div>
           <div className="text-[11px] font-semibold font-sans-editorial text-[#777169] dark:text-[#a8a29e] uppercase tracking-wider mb-2 flex items-center gap-1.5">
             <Cpu className="w-3.5 h-3.5 text-[#0c0a09] dark:text-[#f5f5f5]" />
-            <span>Architecture & Tool Calling</span>
+            <span>Architecture & RAG Subsystem</span>
           </div>
 
           <div className="p-4 rounded-2xl bg-white dark:bg-[#1c1917] border border-[#e7e5e4] dark:border-[#27272a] space-y-2.5 text-[11px] font-sans-editorial shadow-xs">
             <div className="flex items-center justify-between">
-              <span className="text-[#a8a29e]">Ingestion MCP</span>
-              <span className="font-mono text-[#16a34a] dark:text-[#22c55e]">Ready (Registered)</span>
+              <span className="text-[#a8a29e]">Retrieval Provider</span>
+              <span className="font-mono text-[#16a34a] dark:text-[#22c55e]">Internal RAG Subsystem</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-[#a8a29e]">Query MCP</span>
-              <span className="font-mono text-[#16a34a] dark:text-[#22c55e]">Ready (Registered)</span>
+              <span className="text-[#a8a29e]">Vector Database</span>
+              <span className="font-mono text-[#0c0a09] dark:text-[#f5f5f5]">Qdrant</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-[#a8a29e]">Embedding Vector</span>
-              <span className="font-mono text-[#0c0a09] dark:text-[#f5f5f5]">768-dim Dense</span>
+              <span className="text-[#a8a29e]">Embedding Model</span>
+              <span className="font-mono text-[#0c0a09] dark:text-[#f5f5f5]">
+                {document?.embedding_model || 'jina-embeddings-v4'}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-[#a8a29e]">Embedding Dimension</span>
+              <span className="font-mono text-[#0c0a09] dark:text-[#f5f5f5]">
+                {document?.embedding_dimension ? `${document.embedding_dimension}-dim Dense` : 'Dense Vector'}
+              </span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-[#a8a29e]">Similarity Metric</span>

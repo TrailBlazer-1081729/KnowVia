@@ -22,8 +22,12 @@ class DocumentMetadata(BaseModel):
     stage: str = "uploaded"  # uploaded | extracting_text | chunking | generating_embeddings | building_index | completed | failed
     progress: float = 0.0  # 0.0 to 1.0
     error_message: Optional[str] = None
-    mcp_provider: str = "internal_pipeline"  # will reflect future "mcp:rag_ingestion" when attached
+    mcp_provider: str = "internal_pipeline"  # legacy compatibility metadata; RAG runs via internal subsystem
     file_path: Optional[str] = None
+    embedding_dimension: Optional[int] = None
+    embedding_model: Optional[str] = None
+    vector_collection: Optional[str] = None
+    indexed_count: int = 0
 
 class IngestStatusResponse(BaseModel):
     document_id: str

@@ -9,6 +9,7 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT_DIR))
 load_dotenv(ROOT_DIR / ".env")
 
+import pytest
 import websockets
 from httpx import AsyncClient
 
@@ -17,6 +18,14 @@ async def test_ws_live():
     print("Testing WebSocket Live Endpoint against running server...")
     base_url = "http://127.0.0.1:8000"
     ws_url = "ws://127.0.0.1:8000/api/voice/live"
+
+    try:
+        async with AsyncClient(base_url=base_url, timeout=1.0) as client:
+            res = await client.get("/api/health")
+            if res.status_code != 200:
+                pytest.skip("Server is not healthy on http://127.0.0.1:8000")
+    except Exception:
+        pytest.skip("Local test server is not running on http://127.0.0.1:8000")
 
     async with AsyncClient(base_url=base_url) as client:
         # 1. Check health

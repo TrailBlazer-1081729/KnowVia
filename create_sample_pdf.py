@@ -1,18 +1,6 @@
-import pypdf
-from pypdf import PdfWriter
-from pypdf.generic import (
-    DictionaryObject,
-    NameObject,
-    NumberObject,
-    ArrayObject,
-    DecodedStreamObject,
-    ByteStringObject,
-)
+import pymupdf
 
 def create_sample_pdf(filepath: str):
-    # Creates a 3-page PDF with actual extractable text streams
-    writer = PdfWriter()
-
     pages_content = [
         (
             "Quantum Error Mitigation in Distributed Retrieval-Augmented Generation",
@@ -43,44 +31,21 @@ def create_sample_pdf(filepath: str):
         )
     ]
 
+    doc = pymupdf.open()
     for title, paragraphs in pages_content:
-        # Create text stream
-        stream_lines = ["BT", "/F1 16 Tf", "50 730 Td", f"({title}) Tj", "ET"]
-        y_pos = 680
+        page = doc.new_page(width=612, height=792)
+        y = 60
+        page.insert_text((50, y), title, fontsize=16)
+        y += 35
         for para in paragraphs:
-            stream_lines.extend(["BT", "/F1 11 Tf", f"50 {y_pos} Td", f"({para[:90]}) Tj", "ET"])
-            if len(para) > 90:
-                stream_lines.extend(["BT", "/F1 11 Tf", f"50 {y_pos - 15} Td", f"({para[90:180]}) Tj", "ET"])
-            if len(para) > 180:
-                stream_lines.extend(["BT", "/F1 11 Tf", f"50 {y_pos - 30} Td", f"({para[180:270]}) Tj", "ET"])
-            y_pos -= 60
+            # Wrap text to fit page
+            rect = pymupdf.Rect(50, y, 560, y + 100)
+            page.insert_textbox(rect, para, fontsize=11)
+            y += 65
 
-        stream_data = "\n".join(stream_lines).encode("latin-1")
-        
-        # Add blank page then attach text stream
-        page = writer.add_blank_page(width=612, height=792)
-        
-        # Add basic font resource
-        font_dict = DictionaryObject({
-            NameObject("/Type"): NameObject("/Font"),
-            NameObject("/Subtype"): NameObject("/Type1"),
-            NameObject("/BaseFont"): NameObject("/Helvetica"),
-        })
-        res_dict = DictionaryObject({
-            NameObject("/Font"): DictionaryObject({
-                NameObject("/F1"): font_dict
-            })
-        })
-        page[NameObject("/Resources")] = res_dict
-
-        stream_obj = DecodedStreamObject()
-        stream_obj.set_data(stream_data)
-        page[NameObject("/Contents")] = stream_obj
-
-    with open(filepath, "wb") as f:
-        writer.write(f)
-
+    doc.save(filepath)
+    doc.close()
     print(f"Generated sample PDF at: {filepath}")
 
 if __name__ == "__main__":
-    create_sample_pdf("d:/DOWNLOADS/new_pro_mcp/sample_research_paper.pdf")
+    create_sample_pdf("sample_research_paper.pdf")
