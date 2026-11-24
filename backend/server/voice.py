@@ -34,7 +34,90 @@ async def voice_live_socket(
         await websocket.close(code=1008)
         return
 
-    # 2. Validate API key
+    # 2. Handle mock mode for dev simulation / test suite
+    if mock:
+        await websocket.send_json({
+            "type": "connected",
+            "session_id": session_id,
+            "document_id": document_id,
+            "document_name": doc.filename,
+            "mode": "voice_realtime",
+            "mock_mode": True,
+            "document_ready": True,
+        })
+        await websocket.send_json({
+            "type": "state",
+            "state": "listening",
+        })
+
+        mock_epoch = 0
+        try:
+            while True:
+                msg = await websocket.receive()
+                if msg["type"] == "websocket.disconnect":
+                    break
+
+                if "bytes" in msg and msg["bytes"]:
+                    pass
+                elif "text" in msg and msg["text"]:
+                    try:
+                        data = json.loads(msg["text"])
+                    except Exception:
+                        continue
+
+                    mtype = data.get("type")
+                    if mtype == "ping":
+                        await websocket.send_json({"type": "pong"})
+                    elif mtype == "stop":
+                        break
+                    elif mtype == "interrupt":
+                        mock_epoch += 1
+                        await websocket.send_json({
+                            "type": "interrupted",
+                            "epoch": mock_epoch,
+                            "source": "client",
+                        })
+                        await websocket.send_json({
+                            "type": "state",
+                            "state": "listening",
+                            "epoch": mock_epoch,
+                        })
+                    elif mtype == "end_turn":
+                        mock_epoch += 1
+                        await websocket.send_json({
+                            "type": "state",
+                            "state": "speaking",
+                            "epoch": mock_epoch,
+                        })
+                        await websocket.send_json({
+                            "type": "output_transcription",
+                            "text": f"Grounded response for {doc.filename}.",
+                            "epoch": mock_epoch,
+                        })
+                        # 100ms 24kHz silent PCM chunk
+                        await websocket.send_bytes(b"\x00\x00" * 2400)
+                        await websocket.send_json({
+                            "type": "turn_complete",
+                            "epoch": mock_epoch,
+                        })
+                        await websocket.send_json({
+                            "type": "state",
+                            "state": "listening",
+                            "epoch": mock_epoch,
+                        })
+        except WebSocketDisconnect:
+            pass
+        except Exception as exc:
+            print(f"[WebSocket Mock notice] {exc}", flush=True)
+        finally:
+            try:
+                await websocket.close()
+            except Exception:
+                pass
+            print(f"[WebSocket] Voice session {session_id} (mock) cleanly closed.", flush=True)
+        return
+
+    # 3. Validate API key
     if not os.getenv("GEMINI_API_KEY"):
         await websocket.send_json({
             "type": "error",
@@ -105,6 +188,12 @@ async def voice_live_socket(
         system_instruction=system_instruction,
         input_audio_transcription=types.AudioTranscriptionConfig(),
         output_audio_transcription=types.AudioTranscriptionConfig(),
+        realtime_input_config=types.RealtimeInputConfig(
+            automatic_activity_detection=types.AutomaticActivityDetection(
+                disabled=False,
+            ),
+            activity_handling=types.ActivityHandling.START_OF_ACTIVITY_INTERRUPTS,
+        ),
     )
 
     # 5. Connect to Gemini Live session
@@ -142,8 +231,45 @@ async def voice_live_socket(
 
     stop_event = asyncio.Event()
 
+    # Interruption state and generation epoch tracking
+    current_generation_epoch = 0
+    is_interrupted = False
+    interruption_lock = asyncio.Lock()
+
+    async def trigger_interruption(source: str):
+        nonlocal current_generation_epoch, is_interrupted
+        async with interruption_lock:
+            current_generation_epoch += 1
+            is_interrupted = True
+            epoch = current_generation_epoch
+
+        print(f"[WebSocket Interruption] Triggered by {source}, epoch={epoch}", flush=True)
+
+        try:
+            await websocket.send_json({
+                "type": "interrupted",
+                "epoch": epoch,
+                "source": source,
+            })
+            await websocket.send_json({
+                "type": "state",
+                "state": "listening",
+                "epoch": epoch,
+            })
+        except Exception:
+            pass
+
+        # If manual client interrupt, signal activity boundary to Gemini Live to cut off generation
+        if source == "client":
+            try:
+                await live_session.send_realtime_input(activity_start=types.ActivityStart())
+                await live_session.send_realtime_input(activity_end=types.ActivityEnd())
+            except Exception as exc:
+                print(f"[WebSocket] Notice sending activity interrupt to Gemini: {exc}", flush=True)
+
     async def client_to_gemini():
         """Receive microphone audio chunks and control frames from the client and stream to Gemini Live."""
+        nonlocal is_interrupted
         try:
             while not stop_event.is_set():
                 msg = await websocket.receive()
@@ -152,6 +278,8 @@ async def voice_live_socket(
 
                 # Binary frame: raw 16kHz 16-bit PCM microphone audio
                 if "bytes" in msg and msg["bytes"]:
+                    if is_interrupted:
+                        is_interrupted = False
                     await live_session.send_realtime_input(
                         audio=types.Blob(
                             data=msg["bytes"],
@@ -173,10 +301,12 @@ async def voice_live_socket(
                     elif mtype == "end_turn":
                         await live_session.send_realtime_input(audio_stream_end=True)
                     elif mtype == "text" and "text" in data:
+                        if is_interrupted:
+                            is_interrupted = False
                         await live_session.send(input=data["text"], end_of_turn=True)
                     elif mtype == "interrupt":
                         # Client signal barge-in
-                        pass
+                        await trigger_interruption("client")
         except WebSocketDisconnect:
             pass
         except asyncio.CancelledError:
@@ -188,6 +318,8 @@ async def voice_live_socket(
 
     async def gemini_to_client():
         """Receive audio streams, tool requests, and transcriptions from Gemini Live and forward to client."""
+        nonlocal is_interrupted
+        has_sent_speaking_state = False
         try:
             while not stop_event.is_set():
                 async for response in live_session.receive():
@@ -196,6 +328,7 @@ async def voice_live_socket(
 
                     # A. Tool Call Execution
                     if response.tool_call:
+                        has_sent_speaking_state = False
                         await websocket.send_json({
                             "type": "state",
                             "state": "executing_tool",
@@ -249,17 +382,19 @@ async def voice_live_socket(
                     if sc is None:
                         continue
 
-                    # Interruption (barge-in)
+                    # Interruption (barge-in detected by Gemini VAD)
                     if sc.interrupted:
-                        await websocket.send_json({"type": "interrupted"})
-                        await websocket.send_json({"type": "state", "state": "listening"})
+                        has_sent_speaking_state = False
+                        await trigger_interruption("gemini_vad")
 
                     # Input speech transcription
                     if sc.input_transcription and sc.input_transcription.text:
+                        is_interrupted = False
                         text = sc.input_transcription.text
                         await websocket.send_json({
                             "type": "input_transcription",
                             "text": text,
+                            "epoch": current_generation_epoch,
                         })
                         relevant = find_relevant_chunks(document_id, text, top_k=2)
                         if relevant:
@@ -280,12 +415,15 @@ async def voice_live_socket(
                                 "query": text,
                             })
 
-                    # Output speech transcription
+                    # Output speech transcription (suppressed if interrupted)
                     if sc.output_transcription and sc.output_transcription.text:
+                        if is_interrupted:
+                            continue
                         text = sc.output_transcription.text
                         await websocket.send_json({
                             "type": "output_transcription",
                             "text": text,
+                            "epoch": current_generation_epoch,
                         })
                         relevant = find_relevant_chunks(document_id, text, top_k=2)
                         if relevant:
@@ -307,17 +445,43 @@ async def voice_live_socket(
 
                     # Streaming PCM audio output chunks (24kHz 16-bit mono) & text
                     if sc.model_turn:
-                        await websocket.send_json({"type": "state", "state": "speaking"})
+                        if is_interrupted:
+                            # Drop queued/stale audio chunks and text deltas from the interrupted response
+                            continue
+                        if not has_sent_speaking_state:
+                            has_sent_speaking_state = True
+                            await websocket.send_json({
+                                "type": "state",
+                                "state": "speaking",
+                                "epoch": current_generation_epoch,
+                            })
                         for part in sc.model_turn.parts:
+                            if is_interrupted:
+                                break
                             if hasattr(part, "text") and part.text:
-                                await websocket.send_json({"type": "text", "delta": part.text})
+                                await websocket.send_json({
+                                    "type": "text",
+                                    "delta": part.text,
+                                    "epoch": current_generation_epoch,
+                                })
                             if part.inline_data and part.inline_data.data:
                                 await websocket.send_bytes(part.inline_data.data)
 
                     # Turn complete
                     if sc.turn_complete:
-                        await websocket.send_json({"type": "turn_complete"})
-                        await websocket.send_json({"type": "state", "state": "listening"})
+                        has_sent_speaking_state = False
+                        if is_interrupted:
+                            is_interrupted = False
+                            continue
+                        await websocket.send_json({
+                            "type": "turn_complete",
+                            "epoch": current_generation_epoch,
+                        })
+                        await websocket.send_json({
+                            "type": "state",
+                            "state": "listening",
+                            "epoch": current_generation_epoch,
+                        })
 
         except WebSocketDisconnect:
             pass

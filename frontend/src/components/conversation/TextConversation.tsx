@@ -136,7 +136,7 @@ export const TextConversation: React.FC<TextConversationProps> = ({
                 {!isUser && (
                   <div className="flex items-center justify-between gap-2 pb-2.5 mb-2.5 border-b border-[#e7e5e4] dark:border-[#27272a] text-[11px] text-[#777169] dark:text-[#a8a29e]">
                     <span className="font-medium font-sans-editorial">
-                      {msg.model || 'ElevenLabs Research Synthesizer'}
+                      {msg.model || 'KnowVia Research Synthesizer'}
                     </span>
                     <button
                       onClick={() => copyToClipboard(msg.content, msg.id)}

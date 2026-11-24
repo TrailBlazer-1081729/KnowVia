@@ -25,6 +25,7 @@ import type {
 } from '../../types';
 import { RealtimeVoiceService } from '../../services/voice';
 import { isMockMode } from '../../services/api';
+import { AudioWaveform } from './AudioWaveform';
 
 interface VoiceConversationProps {
   document: DocumentMetadata;
@@ -121,7 +122,7 @@ export const VoiceConversation: React.FC<VoiceConversationProps> = ({
   onCitationClick,
 }) => {
   const [voiceState, setVoiceState] = useState<VoiceState>('idle');
-  const [audioLevel, setAudioLevel] = useState<number>(0);
+  const audioLevelRef = useRef<number>(0);
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -134,6 +135,7 @@ export const VoiceConversation: React.FC<VoiceConversationProps> = ({
   // Conversation History & Live Spoken Text
   const [turns, setTurns] = useState<VoiceTurn[]>([]);
   const [currentTurn, setCurrentTurn] = useState<VoiceTurn | null>(null);
+  const currentTurnRef = useRef<VoiceTurn | null>(null);
 
   const voiceServiceRef = useRef<RealtimeVoiceService | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -149,7 +151,9 @@ export const VoiceConversation: React.FC<VoiceConversationProps> = ({
   useEffect(() => {
     const service = new RealtimeVoiceService(document.id, sessionId, {
       onStateChange: (state) => setVoiceState(state),
-      onAudioLevel: (lvl) => setAudioLevel(lvl),
+      onAudioLevel: (lvl) => {
+        audioLevelRef.current = lvl;
+      },
 
       onInputTranscription: (text) => {
         const timeStr = new Date().toLocaleTimeString([], {
@@ -157,19 +161,34 @@ export const VoiceConversation: React.FC<VoiceConversationProps> = ({
           minute: '2-digit',
         });
 
-        setCurrentTurn((prev) => {
-          if (prev && prev.isStreaming) {
-            return { ...prev, userText: text };
-          }
-          return {
-            id: `turn_${Date.now()}`,
+        // If the active turn already received an assistant response and the user begins speaking again,
+        // commit the previous turn first to prevent losing or merging conversational turns.
+        if (currentTurnRef.current && currentTurnRef.current.assistantText.trim().length > 0) {
+          const finished: VoiceTurn = { ...currentTurnRef.current, isStreaming: false };
+          setTurns((history) => {
+            if (history.some((t) => t.id === finished.id)) return history;
+            return [...history, finished];
+          });
+          currentTurnRef.current = null;
+        }
+
+        if (currentTurnRef.current) {
+          // Streaming partial/incremental user speech within the same active turn
+          currentTurnRef.current.userText = text;
+          setCurrentTurn({ ...currentTurnRef.current });
+        } else {
+          // New conversational turn
+          const newTurn: VoiceTurn = {
+            id: `turn_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
             userText: text,
             assistantText: '',
             isStreaming: true,
             documentName: document.filename,
             timestamp: timeStr,
           };
-        });
+          currentTurnRef.current = newTurn;
+          setCurrentTurn(newTurn);
+        }
       },
 
       onOutputTranscription: (text) => {
@@ -178,47 +197,45 @@ export const VoiceConversation: React.FC<VoiceConversationProps> = ({
           minute: '2-digit',
         });
 
-        setCurrentTurn((prev) => {
-          const existing = prev || {
-            id: `turn_${Date.now()}`,
+        if (!currentTurnRef.current) {
+          const newTurn: VoiceTurn = {
+            id: `turn_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
             userText: '',
-            assistantText: '',
+            assistantText: text,
             isStreaming: true,
             documentName: document.filename,
             timestamp: timeStr,
           };
+          currentTurnRef.current = newTurn;
+          setCurrentTurn(newTurn);
+          return;
+        }
 
-          // Incremental text streaming from Gemini Live
-          const prevText = existing.assistantText;
-          let combinedText: string;
-          if (!prevText) {
-            combinedText = text;
-          } else if (text.startsWith(prevText)) {
-            combinedText = text;
-          } else {
-            const separator =
-              prevText.endsWith(' ') || text.startsWith(' ') ? '' : ' ';
-            combinedText = prevText + separator + text;
-          }
+        // Incremental text streaming from Gemini Live
+        const prevText = currentTurnRef.current.assistantText;
+        let combinedText: string;
+        if (!prevText) {
+          combinedText = text;
+        } else if (text.startsWith(prevText)) {
+          combinedText = text;
+        } else {
+          const separator =
+            prevText.endsWith(' ') || text.startsWith(' ') ? '' : ' ';
+          combinedText = prevText + separator + text;
+        }
 
-          return {
-            ...existing,
-            assistantText: combinedText,
-            isStreaming: true,
-          };
-        });
+        currentTurnRef.current.assistantText = combinedText;
+        setCurrentTurn({ ...currentTurnRef.current });
       },
 
       onSources: (sources, docName) => {
-        setCurrentTurn((prev) =>
-          prev
-            ? {
-                ...prev,
-                citations: sources,
-                documentName: docName || document.filename,
-              }
-            : prev
-        );
+        if (currentTurnRef.current) {
+          currentTurnRef.current.citations = sources;
+          if (docName) {
+            currentTurnRef.current.documentName = docName;
+          }
+          setCurrentTurn({ ...currentTurnRef.current });
+        }
       },
 
       onToolCall: (invocation) => {
@@ -254,31 +271,60 @@ export const VoiceConversation: React.FC<VoiceConversationProps> = ({
       },
 
       onTurnComplete: () => {
-        setCurrentTurn((prev) => {
-          if (prev) {
-            const completedTurn: VoiceTurn = { ...prev, isStreaming: false };
-            setTurns((history) => [...history, completedTurn]);
-            return null;
+        const active = currentTurnRef.current;
+        if (!active) return;
+
+        // Synchronously clear the active turn reference to guarantee idempotency
+        // against rapid/duplicate socket messages or React effect cycles
+        currentTurnRef.current = null;
+        setCurrentTurn(null);
+
+        // Only commit turns that contain actual user or assistant content
+        if (!active.userText?.trim() && !active.assistantText?.trim()) {
+          return;
+        }
+
+        const completedTurn: VoiceTurn = { ...active, isStreaming: false };
+        setTurns((history) => {
+          // Idempotent: prevent duplicate turns with the same ID
+          if (history.some((t) => t.id === completedTurn.id)) {
+            return history;
           }
-          return null;
+          return [...history, completedTurn];
         });
       },
 
       onInterrupted: () => {
-        setCurrentTurn((prev) => {
-          if (prev) {
-            const interruptedTurn: VoiceTurn = {
-              ...prev,
-              isStreaming: false,
-              assistantText:
-                prev.assistantText +
-                (prev.assistantText ? ' [Interrupted]' : ''),
-            };
-            setTurns((history) => [...history, interruptedTurn]);
-            return null;
+        const active = currentTurnRef.current;
+        if (!active) {
+          setVoiceState('listening');
+          return;
+        }
+
+        // Synchronously clear the active turn reference
+        currentTurnRef.current = null;
+        setCurrentTurn(null);
+
+        const hasText =
+          active.assistantText && active.assistantText.trim().length > 0;
+        const interruptedTurn: VoiceTurn = {
+          ...active,
+          isStreaming: false,
+          assistantText: hasText
+            ? active.assistantText.includes('[Interrupted]')
+              ? active.assistantText
+              : `${active.assistantText} [Interrupted]`
+            : '[Response interrupted]',
+        };
+
+        setTurns((history) => {
+          // Idempotent: prevent duplicate turns with the same ID
+          if (history.some((t) => t.id === interruptedTurn.id)) {
+            return history;
           }
-          return null;
+          return [...history, interruptedTurn];
         });
+        setVoiceState('listening');
       },
 
       onError: (err) => setErrorMessage(err),
@@ -289,6 +335,7 @@ export const VoiceConversation: React.FC<VoiceConversationProps> = ({
     return () => {
       service.stop();
       voiceServiceRef.current = null;
+      currentTurnRef.current = null;
     };
   }, [document.id, document.filename, sessionId]);
 
@@ -304,7 +351,7 @@ export const VoiceConversation: React.FC<VoiceConversationProps> = ({
       voiceServiceRef.current.stop();
     }
     setVoiceState('idle');
-    setAudioLevel(0);
+    audioLevelRef.current = 0;
   };
 
   const handleToggleMute = () => {
@@ -331,13 +378,39 @@ export const VoiceConversation: React.FC<VoiceConversationProps> = ({
     setExpandedTools((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const numBars = 24;
+  const numBars = 28;
   const isSessionActive =
     voiceState === 'connected' ||
     voiceState === 'listening' ||
     voiceState === 'processing' ||
     voiceState === 'speaking' ||
+    voiceState === 'interrupted' ||
     voiceState === 'executing_tool';
+
+  const canInterrupt =
+    isSessionActive &&
+    (voiceState === 'speaking' ||
+      voiceState === 'processing' ||
+      voiceState === 'executing_tool' ||
+      (currentTurn !== null && currentTurn.isStreaming));
+
+  // Keyboard shortcut: Escape or 'i' to trigger instant barge-in interrupt
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      ) {
+        return;
+      }
+      if ((e.key === 'Escape' || e.key === 'i' || e.key === 'I') && canInterrupt) {
+        e.preventDefault();
+        handleInterrupt();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [canInterrupt]);
 
   // Active running tool for header pill
   const runningTool = toolInvocations.find((t) => t.status === 'running');
@@ -385,7 +458,7 @@ export const VoiceConversation: React.FC<VoiceConversationProps> = ({
             {/* Live Status Badge */}
             <div className="mb-3.5">
               <span
-                className={`inline-flex items-center gap-2 px-3.5 py-1 rounded-full text-xs font-medium font-sans-editorial ${
+                className={`inline-flex items-center gap-2 px-3.5 py-1 rounded-full text-xs font-medium font-sans-editorial transition-all ${
                   voiceState === 'listening'
                     ? 'bg-[#16a34a]/10 text-[#16a34a] dark:text-[#22c55e]'
                     : voiceState === 'processing'
@@ -393,7 +466,9 @@ export const VoiceConversation: React.FC<VoiceConversationProps> = ({
                     : voiceState === 'executing_tool'
                     ? 'bg-[#7c3aed]/10 text-[#7c3aed] dark:text-[#a78bfa] animate-pulse'
                     : voiceState === 'speaking'
-                    ? 'bg-[#0c0a09] dark:bg-white text-white dark:text-[#0c0a09] animate-pulse'
+                    ? 'bg-[#0c0a09] dark:bg-white text-white dark:text-[#0c0a09] animate-pulse shadow-xs'
+                    : voiceState === 'interrupted'
+                    ? 'bg-[#f59e0b]/10 text-[#d97706] dark:text-[#fbbf24]'
                     : voiceState === 'error'
                     ? 'bg-[#dc2626]/10 text-[#dc2626]'
                     : 'bg-[#f0efed] dark:bg-[#292524] text-[#777169] dark:text-[#a8a29e]'
@@ -409,6 +484,8 @@ export const VoiceConversation: React.FC<VoiceConversationProps> = ({
                       ? 'bg-[#7c3aed] animate-ping'
                       : voiceState === 'speaking'
                       ? 'bg-white dark:bg-[#0c0a09] animate-pulse'
+                      : voiceState === 'interrupted'
+                      ? 'bg-[#f59e0b]'
                       : 'bg-[#a8a29e]'
                   }`}
                 />
@@ -422,7 +499,9 @@ export const VoiceConversation: React.FC<VoiceConversationProps> = ({
                       ? `Calling MCP [${runningTool.server}:${runningTool.name}]...`
                       : 'Executing MCP Tool...'
                     : voiceState === 'speaking'
-                    ? 'Gemini Live Speaking...'
+                    ? 'KnowVia Live Speaking...'
+                    : voiceState === 'interrupted'
+                    ? 'Response Interrupted'
                     : voiceState === 'requesting_permission'
                     ? 'Requesting Microphone...'
                     : voiceState === 'connecting'
@@ -434,38 +513,13 @@ export const VoiceConversation: React.FC<VoiceConversationProps> = ({
               </span>
             </div>
 
-            {/* Waveform Visualization */}
-            <div className="h-12 w-full flex items-center justify-center gap-1.5 px-2">
-              {Array.from({ length: numBars }).map((_, index) => {
-                const distanceCenter =
-                  Math.abs(index - numBars / 2) / (numBars / 2);
-                const falloff = 1 - Math.pow(distanceCenter, 1.5);
-                const heightMultiplier = isSessionActive
-                  ? Math.max(0.08, audioLevel * falloff)
-                  : 0.08;
-                const barHeight = Math.min(
-                  100,
-                  Math.max(8, heightMultiplier * 100)
-                );
-
-                return (
-                  <div
-                    key={index}
-                    className="w-1.5 rounded-full transition-all duration-75 ease-out"
-                    style={{
-                      height: `${barHeight}%`,
-                      backgroundColor:
-                        voiceState === 'speaking' ||
-                        voiceState === 'listening' ||
-                        voiceState === 'executing_tool'
-                          ? 'var(--ink)'
-                          : 'var(--hairline-strong)',
-                      opacity: isSessionActive ? 0.9 : 0.25,
-                    }}
-                  />
-                );
-              })}
-            </div>
+            {/* Zero Re-render Real-time Waveform Visualization */}
+            <AudioWaveform
+              levelRef={audioLevelRef}
+              voiceState={voiceState}
+              isActive={isSessionActive}
+              numBars={numBars}
+            />
 
             {/* Error Notification */}
             {errorMessage && (
@@ -503,15 +557,25 @@ export const VoiceConversation: React.FC<VoiceConversationProps> = ({
                     )}
                   </button>
 
-                  {voiceState === 'speaking' && (
-                    <button
-                      onClick={handleInterrupt}
-                      className="px-3.5 py-2 rounded-full bg-[#fef2f2] dark:bg-[#450a0a] border border-[#fecaca] dark:border-[#991b1b] text-xs font-medium font-sans-editorial text-[#dc2626] dark:text-[#f87171] hover:bg-[#fee2e2] transition-colors"
-                      title="Interrupt assistant speech (barge-in)"
-                    >
-                      Interrupt
-                    </button>
-                  )}
+                  {/* Persistent & Responsive Interrupt Barge-In Button */}
+                  <button
+                    onClick={handleInterrupt}
+                    disabled={!canInterrupt}
+                    className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-medium font-sans-editorial transition-all shadow-xs ${
+                      canInterrupt
+                        ? 'bg-[#ef4444] hover:bg-[#dc2626] text-white cursor-pointer active:scale-95 shadow-sm ring-2 ring-red-400/20'
+                        : 'bg-[#f0efed] dark:bg-[#292524] text-[#a8a29e] dark:text-[#78716c] opacity-40 cursor-not-allowed border border-[#e7e5e4] dark:border-[#27272a]'
+                    }`}
+                    title={
+                      canInterrupt
+                        ? 'Interrupt assistant speech or reasoning instantly (barge-in)'
+                        : 'Assistant is not speaking'
+                    }
+                    aria-label="Interrupt assistant speech"
+                  >
+                    <Square className="w-3 h-3 fill-current" />
+                    <span>Interrupt</span>
+                  </button>
 
                   <button
                     onClick={handleFinishTurn}

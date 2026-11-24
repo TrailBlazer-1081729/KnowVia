@@ -74,6 +74,7 @@ export type VoiceState =
   | 'listening'
   | 'processing'
   | 'speaking'
+  | 'interrupted'
   | 'executing_tool'
   | 'error';
 

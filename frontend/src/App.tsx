@@ -22,11 +22,16 @@ import { VoiceConversation } from './components/conversation/VoiceConversation';
 import { ContextPanel } from './components/context/ContextPanel';
 
 export function App() {
-  // Theme & Mock Mode State
+  // Theme & Mock Mode State with backward-compatible migration
   const [isDark, setIsDark] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('elevenlabs_theme');
-      if (stored) return stored === 'dark';
+      const stored = localStorage.getItem('knowvia_theme') || localStorage.getItem('elevenlabs_theme');
+      if (stored) {
+        if (!localStorage.getItem('knowvia_theme')) {
+          localStorage.setItem('knowvia_theme', stored);
+        }
+        return stored === 'dark';
+      }
       return window.matchMedia('(prefers-color-scheme: dark)').matches;
     }
     return false;
@@ -69,13 +74,15 @@ export function App() {
   // Polling ref for ingestion status
   const pollingRef = useRef<number | null>(null);
 
-  // Apply dark mode class to html document
+  // Apply dark mode class to html document and persist preference
   useEffect(() => {
     if (isDark) {
       document.documentElement.classList.add('dark');
+      localStorage.setItem('knowvia_theme', 'dark');
       localStorage.setItem('elevenlabs_theme', 'dark');
     } else {
       document.documentElement.classList.remove('dark');
+      localStorage.setItem('knowvia_theme', 'light');
       localStorage.setItem('elevenlabs_theme', 'light');
     }
   }, [isDark]);
@@ -389,7 +396,7 @@ export function App() {
         {/* Workspace Body Area */}
         <div className="flex-1 flex overflow-hidden relative">
           {!showConversationWorkspace ? (
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 overflow-y-auto transition-opacity duration-200">
               <UploadDropZone
                 onFileSelected={handleFileSelected}
                 onStartIngestion={handleStartIngestion}
@@ -402,21 +409,25 @@ export function App() {
               />
             </div>
           ) : conversationMode === 'text' ? (
-            <TextConversation
-              messages={messages}
-              onSendMessage={handleSendMessage}
-              isLoading={isLoadingChat}
-              document={currentDocument}
-              onCitationClick={handleCitationClick}
-              onResetSession={() => setMessages([])}
-            />
+            <div className="flex-1 flex flex-col h-full overflow-hidden transition-opacity duration-200">
+              <TextConversation
+                messages={messages}
+                onSendMessage={handleSendMessage}
+                isLoading={isLoadingChat}
+                document={currentDocument}
+                onCitationClick={handleCitationClick}
+                onResetSession={() => setMessages([])}
+              />
+            </div>
           ) : (
-            <VoiceConversation
-              document={currentDocument}
-              sessionId={currentSession?.id || 'sess_voice'}
-              onSwitchToText={() => setConversationMode('text')}
-              onCitationClick={handleCitationClick}
-            />
+            <div className="flex-1 flex flex-col h-full overflow-hidden transition-opacity duration-200">
+              <VoiceConversation
+                document={currentDocument}
+                sessionId={currentSession?.id || 'sess_voice'}
+                onSwitchToText={() => setConversationMode('text')}
+                onCitationClick={handleCitationClick}
+              />
+            </div>
           )}
 
           {/* Mobile Backdrop for Context Panel */}

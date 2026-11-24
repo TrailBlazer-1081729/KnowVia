@@ -67,7 +67,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </button>
       </div>
 
-      {/* New Session Action: ElevenLabs Ink Pill */}
+      {/* New Session Action */}
       <div className="p-3">
         <button
           onClick={onNewSession}

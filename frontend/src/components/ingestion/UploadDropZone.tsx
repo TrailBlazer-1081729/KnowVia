@@ -129,14 +129,14 @@ export const UploadDropZone: React.FC<UploadDropZoneProps> = ({
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-10 md:py-16 flex flex-col items-center relative">
-      {/* ElevenLabs Atmospheric Gradient Orb Bloom behind headline */}
+      {/* KnowVia Atmospheric Gradient Orb Bloom behind headline */}
       <div className="absolute top-4 w-96 h-96 rounded-full gradient-orb-mint-peach pointer-events-none blur-2xl opacity-70 -z-10" />
 
       {/* Editorial Headline and Workflow Overview */}
       <div className="text-center max-w-2xl mb-12">
         <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#f0efed] dark:bg-[#292524] text-[#0c0a09] dark:text-[#f5f5f5] text-[11px] font-sans-editorial font-semibold uppercase tracking-wider mb-5 border border-[#e7e5e4] dark:border-[#27272a]">
           <Volume2 className="w-3.5 h-3.5" />
-          <span>ElevenLabs Document Intelligence</span>
+          <span>KnowVia Document Intelligence</span>
         </div>
 
         {/* Waldenburg Light weight 300 editorial display headline */}
@@ -316,7 +316,7 @@ export const UploadDropZone: React.FC<UploadDropZoneProps> = ({
               </div>
             )}
 
-            {/* Bottom Ingestion Controls: ElevenLabs Ink Pill */}
+            {/* Bottom Ingestion Controls */}
             {currentDocument?.status !== 'ingesting' && currentDocument?.status !== 'ready' && (
               <div className="mt-6 flex items-center justify-end gap-3">
                 <button

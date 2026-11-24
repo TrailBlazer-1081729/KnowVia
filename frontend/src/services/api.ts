@@ -8,17 +8,27 @@ import type {
 
 const API_BASE = '/api';
 
-// Local storage key for mock mode toggle
-const MOCK_MODE_STORAGE_KEY = 'elevenlabs_mock_mode';
+// Local storage keys for mock mode toggle with backward-compatible migration
+const MOCK_MODE_STORAGE_KEY = 'knowvia_mock_mode';
+const LEGACY_MOCK_MODE_KEY = 'elevenlabs_mock_mode';
 
 export function isMockMode(): boolean {
   if (typeof window === 'undefined') return false;
-  return localStorage.getItem(MOCK_MODE_STORAGE_KEY) === 'true';
+  const current = localStorage.getItem(MOCK_MODE_STORAGE_KEY);
+  if (current !== null) return current === 'true';
+  const legacy = localStorage.getItem(LEGACY_MOCK_MODE_KEY);
+  if (legacy !== null) {
+    localStorage.setItem(MOCK_MODE_STORAGE_KEY, legacy);
+    return legacy === 'true';
+  }
+  return false;
 }
 
 export function setMockMode(enabled: boolean): void {
   if (typeof window !== 'undefined') {
-    localStorage.setItem(MOCK_MODE_STORAGE_KEY, enabled ? 'true' : 'false');
+    const val = enabled ? 'true' : 'false';
+    localStorage.setItem(MOCK_MODE_STORAGE_KEY, val);
+    localStorage.setItem(LEGACY_MOCK_MODE_KEY, val);
   }
 }
 
@@ -248,7 +258,7 @@ export async function sendChatMessage(
       content: `### Synthesized Response (Mock Mode)\n\nBased on **Page 2** of the document:\n\n> "${mockCitation.snippet}"\n\nYour inquiry regarding *"${message}"* was analyzed across the indexed text chunks. Once the real backend with Gemini Live and MCP is active, live grounded reasoning with citations will reflect the uploaded document's contents.`,
       sources: [mockCitation],
       timestamp: new Date().toISOString(),
-      model: 'elevenlabs-mock-synthesizer',
+      model: 'knowvia-research-synthesizer',
     };
     return reply;
   }

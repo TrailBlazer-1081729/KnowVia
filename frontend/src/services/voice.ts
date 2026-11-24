@@ -62,6 +62,8 @@ export class RealtimeVoiceService {
   // Output streaming audio scheduler
   private nextPlayTime: number = 0;
   private activeSources: AudioBufferSourceNode[] = [];
+  private playbackEpoch: number = 0;
+  private isDiscardingAudio: boolean = false;
 
   constructor(documentId: string, sessionId: string, callbacks: VoiceCallbacks) {
     this.documentId = documentId;
@@ -118,8 +120,15 @@ export class RealtimeVoiceService {
         }
         const rms = Math.sqrt(sumSquares / channelData.length);
 
-        if (!this.isMuted && this.currentVoiceState !== 'speaking') {
-          this.callbacks.onAudioLevel(Math.min(1.0, rms * 5));
+        if (!this.isMuted) {
+          // If assistant is not actively outputting audio or user speech is active, show mic level
+          if (this.activeSources.length === 0 || rms > 0.04) {
+            this.callbacks.onAudioLevel(Math.min(1.0, rms * 5));
+          }
+          if (rms > 0.04) {
+            // User speech activity detected: reset discard audio state
+            this.isDiscardingAudio = false;
+          }
         }
 
         // Stream raw PCM chunk over WebSocket if active and not muted
@@ -216,7 +225,11 @@ export class RealtimeVoiceService {
     sources?: SourceCitation[];
     document_name?: string;
     message?: string;
+    epoch?: number;
+    source?: string;
   }): void {
+    if (!this.isRunning) return;
+
     switch (data.type) {
       case 'connected':
         this.setState('connected');
@@ -225,6 +238,10 @@ export class RealtimeVoiceService {
 
       case 'state':
         if (data.state) {
+          if (data.state === 'speaking' && this.isDiscardingAudio) {
+            // Suppress late speaking state from interrupted turn
+            break;
+          }
           this.setState(data.state);
         }
         break;
@@ -267,18 +284,25 @@ export class RealtimeVoiceService {
       }
 
       case 'input_transcription':
+        this.isDiscardingAudio = false;
         if (data.text) {
           this.callbacks.onInputTranscription(data.text);
         }
         break;
 
       case 'output_transcription':
+        if (this.isDiscardingAudio) {
+          break;
+        }
         if (data.text) {
           this.callbacks.onOutputTranscription(data.text);
         }
         break;
 
       case 'text': {
+        if (this.isDiscardingAudio) {
+          break;
+        }
         const streamText = data.delta || data.text;
         if (streamText) {
           this.callbacks.onOutputTranscription(streamText);
@@ -295,12 +319,17 @@ export class RealtimeVoiceService {
       }
 
       case 'interrupted':
+        this.isDiscardingAudio = true;
+        if (data.epoch !== undefined && data.epoch > this.playbackEpoch) {
+          this.playbackEpoch = data.epoch;
+        }
         this.clearPlayback();
         this.callbacks.onInterrupted?.();
         this.setState('listening');
         break;
 
       case 'turn_complete':
+        this.isDiscardingAudio = false;
         this.callbacks.onTurnComplete?.();
         this.setState('listening');
         break;
@@ -316,6 +345,10 @@ export class RealtimeVoiceService {
 
   private playPcmChunk(pcmData: ArrayBuffer): void {
     if (!this.isRunning || !this.playbackContext) return;
+    if (this.isDiscardingAudio) {
+      // Interrupted: drop late or queued packet
+      return;
+    }
 
     if (this.playbackContext.state === 'suspended') {
       this.playbackContext.resume();
@@ -364,7 +397,7 @@ export class RealtimeVoiceService {
   public clearPlayback(): void {
     for (const src of this.activeSources) {
       try {
-        src.stop();
+        src.stop(0);
         src.disconnect();
       } catch {
         // Source might already have ended
@@ -377,6 +410,18 @@ export class RealtimeVoiceService {
       this.nextPlayTime = 0;
     }
     this.callbacks.onAudioLevel(0);
+  }
+
+  public getCurrentState(): VoiceState {
+    return this.currentVoiceState;
+  }
+
+  public hasActivePlayback(): boolean {
+    return this.activeSources.length > 0;
+  }
+
+  public getPlaybackEpoch(): number {
+    return this.playbackEpoch;
   }
 
   private startMockSimulation(): void {
@@ -429,14 +474,18 @@ export class RealtimeVoiceService {
   }
 
   public interrupt(): void {
+    this.playbackEpoch += 1;
+    this.isDiscardingAudio = true;
     this.clearPlayback();
     if (this.socket && this.socket.readyState === WebSocket.OPEN) {
       this.socket.send(
         JSON.stringify({
           type: 'interrupt',
+          epoch: this.playbackEpoch,
         })
       );
     }
+    this.callbacks.onInterrupted?.();
     this.setState('listening');
   }
 
@@ -483,6 +532,9 @@ export class RealtimeVoiceService {
     }
 
     if (this.socket) {
+      this.socket.onmessage = null;
+      this.socket.onerror = null;
+      this.socket.onclose = null;
       if (this.socket.readyState === WebSocket.OPEN) {
         try {
           this.socket.send(JSON.stringify({ type: 'stop' }));

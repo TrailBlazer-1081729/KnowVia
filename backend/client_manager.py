@@ -125,6 +125,8 @@ class MCPClientManager:
     async def _close_internal(self):
         try:
             await self.exit_stack.aclose()
+        except Exception as exc:
+            print(f"[MCP Close Notice] {exc}", flush=True)
         finally:
             self.sessions.clear()
             self.tool_to_session.clear()

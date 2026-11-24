@@ -49,16 +49,12 @@ class TestRAGVoiceAssistant(unittest.TestCase):
         ingest_res = self.client.post(f"/api/documents/{doc_id}/ingest")
         self.assertEqual(ingest_res.status_code, 200)
 
-        # Poll for ingestion completion — the TestClient runs async tasks
-        # in the event loop, so we need sufficient polling attempts
-        status_data = None
-        for _ in range(60):
-            status_res = self.client.get(f"/api/documents/{doc_id}/status")
-            self.assertEqual(status_res.status_code, 200)
-            status_data = status_res.json()
-            if status_data["status"] == "ready":
-                break
-            time.sleep(0.2)
+        # Execute ingestion directly to avoid Starlette TestClient background-task thread starvation
+        asyncio.run(run_ingestion_pipeline(doc_id))
+
+        status_res = self.client.get(f"/api/documents/{doc_id}/status")
+        self.assertEqual(status_res.status_code, 200)
+        status_data = status_res.json()
 
         self.assertIsNotNone(status_data)
         self.assertEqual(status_data["status"], "ready")
@@ -119,7 +115,7 @@ class TestRAGVoiceAssistant(unittest.TestCase):
         if doc_id is None:
             self.skipTest("No ready document available")
 
-        with self.client.websocket_connect(f"/api/voice/live?document_id={doc_id}&session_id=sess_valid") as ws:
+        with self.client.websocket_connect(f"/api/voice/live?document_id={doc_id}&session_id=sess_valid&mock=true") as ws:
             connected_msg = ws.receive_json()
             self.assertEqual(connected_msg["type"], "connected")
             self.assertEqual(connected_msg["mode"], "voice_realtime")
@@ -135,6 +131,63 @@ class TestRAGVoiceAssistant(unittest.TestCase):
             self.assertEqual(pong_msg["type"], "pong")
 
             # Stop session cleanly
+            ws.send_json({"type": "stop"})
+
+    def test_05_websocket_voice_interruption_epochs(self):
+        """Test manual interruption message handling, epoch incrementing, and state stability."""
+        doc_id = None
+        for did, doc in DOCUMENTS.items():
+            if doc.status == "ready":
+                doc_id = did
+                break
+
+        if doc_id is None:
+            self.skipTest("No ready document available")
+
+        with self.client.websocket_connect(f"/api/voice/live?document_id={doc_id}&session_id=sess_interrupt_test&mock=true") as ws:
+            # Consume handshake
+            msg1 = ws.receive_json()
+            self.assertEqual(msg1["type"], "connected")
+            msg2 = ws.receive_json()
+            self.assertEqual(msg2["type"], "state")
+            self.assertEqual(msg2["state"], "listening")
+
+            # 1. Trigger first manual interrupt
+            ws.send_json({"type": "interrupt"})
+            intr1 = ws.receive_json()
+            self.assertEqual(intr1["type"], "interrupted")
+            self.assertEqual(intr1["epoch"], 1)
+            self.assertEqual(intr1["source"], "client")
+
+            state1 = ws.receive_json()
+            self.assertEqual(state1["type"], "state")
+            self.assertEqual(state1["state"], "listening")
+
+            # 2. Trigger second manual interrupt immediately (rapid clicks)
+            ws.send_json({"type": "interrupt"})
+            intr2 = ws.receive_json()
+            self.assertEqual(intr2["type"], "interrupted")
+            self.assertEqual(intr2["epoch"], 2)
+
+            state2 = ws.receive_json()
+            self.assertEqual(state2["type"], "state")
+            self.assertEqual(state2["state"], "listening")
+
+            # 3. Stream binary PCM audio after interrupt (user speaks new question)
+            pcm_chunk = b"\x00\x00" * 800  # 800 samples = 50ms at 16kHz
+            ws.send_bytes(pcm_chunk)
+
+            # 4. Third interrupt after sending audio
+            ws.send_json({"type": "interrupt"})
+            intr3 = ws.receive_json()
+            self.assertEqual(intr3["type"], "interrupted")
+            self.assertEqual(intr3["epoch"], 3)
+
+            state3 = ws.receive_json()
+            self.assertEqual(state3["type"], "state")
+            self.assertEqual(state3["state"], "listening")
+
+            # Session remains alive and can be stopped cleanly
             ws.send_json({"type": "stop"})
 
 
